@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D3 Azimuthal Equidistant Map</title>
+    <style>
+      /* Basic styling */
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background-color: #f0f0f0;
+      }
+
+      /* Style for the land features */
+      .land {
+        fill: #1a1a1abe;
+        stroke: #fff;
+        stroke-width: 0.5px;
+      }
+
+      /* Style for the latitude/longitude lines */
+      .graticule {
+        fill: none;
+        stroke: #464646;
+        stroke-width: 0.5px;
+      }
+      
+      /* Transparent sphere outline that captures mouse events */
+      .sphere {
+        fill: none;
+        stroke: #181818;
+        stroke-width: 0.5px;
+      }
+
+      /* Cursor styles for interaction */
+      .globe {
+        cursor: grab;
+      }
+
+      .globe:active {
+        cursor: grabbing;
+      }
+      /* In index.html <style> tag */
+      .active-country {
+        fill: #ffc107b9; /* A gold color for highlighting */
+        stroke: #000000;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 flex flex-col h-screen">
+  <header class="w-full bg-black text-white flex items-stretch shadow-md z-10">
+    
+    <div class="flex-shrink-0 flex items-center p-2 border-r border-white">
+      <img src="/logo_dark_hp.svg" alt="Logo" class="h-8 w-auto">
+    </div>
+
+    <div class="relative flex items-center border-r border-white">
+      <select id="country-select" disabled 
+        class="appearance-none bg-black h-full py-2 pl-4 pr-8 focus:outline-none rounded-none">
+        <option value="">Select a Country</option>
+        <option value="United States of America">US</option>
+        <option value="United Kingdom">UK</option>
+        <option value="Australia">Australia</option>
+      </select>
+      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+      </div>
+    </div>
+
+    <button id="toggle-climate-btn" class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#1</button>
+    <button class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#2</button>
+    <button class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#3</button>
+    <button class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#4</button>
+    
+  </header>
+
+  <main id="map-container" class="flex-grow flex items-center justify-center"></main>
+
+  <div id="info-box" 
+    class="absolute bottom-150 right-60 w-64 p-4 bg-white bg-opacity-90 rounded-lg shadow-lg border border-gray-200 
+           invisible opacity-0 transition-opacity duration-500 ease-in-out">
+    <h2 id="info-country-name" class="text-xl font-bold text-gray-800"></h2>
+    <h3 id="info-title" class="text-lg font-semibold text-gray-600 mt-2"></h3>
+    <p id="info-text" class="text-sm text-gray-700 mt-1"></p>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+
+</body>
+</html>

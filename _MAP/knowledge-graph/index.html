@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climate Case Knowledge Graph</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <!-- The CSS is now imported via main.js, but keeping this link is good practice for fallback or non-JS scenarios -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    
+
+    <header id="main-header" class="w-full bg-black text-white flex items-stretch shadow-md z-10">
+    
+      <div class="flex-shrink-0 flex items-center p-2 border-r border-white">
+        <img src="/logo_dark_hp.svg" alt="Logo" class="h-8 w-auto">
+      </div>
+
+      <div class="relative flex items-center border-r border-white">
+        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+        </div>
+      </div>
+
+      <!-- <button id="toggle-labels-btn" class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">LABELS</button> -->
+      <input type="search" id="search-input" class="text-white bg-black" placeholder="Search for a case...">
+        <div class="slider-container">
+            <label for="year-slider">CASES UP TO YEAR: <strong id="year-label"></strong></label>
+            <input type="range" id="year-slider">
+        </div>
+    </header>
+    <h1 class=text-white>CLIMATE CASES 2008-2025</h1>
+    <!-- !-- New Checkbox for Toggling Labels --> 
+    <div class="label-toggle-container">
+        <!-- <input type="checkbox" id="label-toggle-checkbox" checked> -->
+        <input checked id="label-toggle-checkbox" type="checkbox" class="w-4 h-4 text-gray-600 bg-gray-100 border-gray-300 rounded-sm focus:bg-gray-700 dark:focus:bg-gray-700 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+        <label for="label-toggle-checkbox">Show Case Labels</label>
+    </div>
+    <div id="graph-container"></div>
+    <div id="tooltip"></div>
+
+    <!-- The script is now loaded as a module, which allows it to use import statements. -->
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

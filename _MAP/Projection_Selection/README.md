@@ -1,0 +1,1 @@
+These projections are available in the [geo.projection plugin](https://github.com/d3/d3-plugins/tree/master/geo/projection).
