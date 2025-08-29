@@ -3,90 +3,125 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>D3 Azimuthal Equidistant Map</title>
-    <style>
-      /* Basic styling */
-      body {
-        margin: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        background-color: #f0f0f0;
-      }
-
-      /* Style for the land features */
-      .land {
-        fill: #1a1a1abe;
-        stroke: #fff;
-        stroke-width: 0.5px;
-      }
-
-      /* Style for the latitude/longitude lines */
-      .graticule {
-        fill: none;
-        stroke: #464646;
-        stroke-width: 0.5px;
-      }
-      
-      /* Transparent sphere outline that captures mouse events */
-      .sphere {
-        fill: none;
-        stroke: #181818;
-        stroke-width: 0.5px;
-      }
-
-      /* Cursor styles for interaction */
-      .globe {
-        cursor: grab;
-      }
-
-      .globe:active {
-        cursor: grabbing;
-      }
-      /* In index.html <style> tag */
-      .active-country {
-        fill: #ffc107b9; /* A gold color for highlighting */
-        stroke: #000000;
-      }
-    </style>
+    <title>Global Climate Cases</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Link to your external stylesheet -->
+    <link rel="stylesheet" href="/src/style.css">
   </head>
   <body class="bg-gray-100 flex flex-col h-screen">
-  <header class="w-full bg-black text-white flex items-stretch shadow-md z-10">
+  <header class="w-full bg-black text-white flex items-stretch shadow-md z-10 border-b border-white">
     
     <div class="flex-shrink-0 flex items-center p-2 border-r border-white">
-      <img src="/logo_dark_hp.svg" alt="Logo" class="h-8 w-auto">
+      <img src="Climate_Rights_Logo-b1-02.png" alt="Logo" class="h-8 w-auto">
     </div>
 
-    <div class="relative flex items-center border-r border-white">
-      <select id="country-select" disabled 
-        class="appearance-none bg-black h-full py-2 pl-4 pr-8 focus:outline-none rounded-none">
-        <option value="">Select a Country</option>
-        <option value="United States of America">US</option>
-        <option value="United Kingdom">UK</option>
-        <option value="Australia">Australia</option>
-      </select>
-      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
-        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+      <button id="toggle-cases-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Climate Cases</button>
+      <button id="toggle-climate-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Temperature</button>
+      <button id="toggle-climate-raster-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Emmission</button>
+      
+      <!-- Slider is inside the header -->
+      <div id="slider-container">
+          <label id="year-label" for="year-slider">2023</label>
+          <input type="range" id="year-slider" min="1980" max="2023" step="1" value="2023">
       </div>
-    </div>
 
-    <button id="toggle-climate-btn" class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#1</button>
-    <button class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#2</button>
-    <button class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#3</button>
-    <button class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white border-y-0 border-x-0">MAP#4</button>
-    
   </header>
 
-  <main id="map-container" class="flex-grow flex items-center justify-center"></main>
+  <main>
+    <div id="filter-panel">
+      <div class="search-container">
+        <input type="text" id="country-search-input" placeholder="Search country..." autocomplete="off">
+        <button id="country-search-btn">Search</button>
+        <div id="autocomplete-results"></div>
+      </div>
 
-  <div id="info-box" 
-    class="absolute bottom-150 right-60 w-64 p-4 bg-white bg-opacity-90 rounded-lg shadow-lg border border-gray-200 
-           invisible opacity-0 transition-opacity duration-500 ease-in-out">
-    <h2 id="info-country-name" class="text-xl font-bold text-gray-800"></h2>
-    <h3 id="info-title" class="text-lg font-semibold text-gray-600 mt-2"></h3>
-    <p id="info-text" class="text-sm text-gray-700 mt-1"></p>
-  </div>
+      <!-- MODIFIED: Replaced placeholders with actual status filters -->
+      <div class="filter-group">
+        <div class="filter-group-header">
+          <span>Status</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="white" stroke-width="2"><path d="M19 9l-7 7-7-7"></path></svg>
+        </div>
+        <div class="filter-values">
+          <div class="filter-item">
+            <input type="checkbox" id="status-decided" name="status" value="Decided (General)">
+            <label for="status-decided">Decided (General)</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-approved" name="status" value="Approved / Granted">
+            <label for="status-approved">Approved / Granted</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-settled" name="status" value="Settled / Resolved">
+            <label for="status-settled">Settled / Resolved</label>
+          </div>
+           <div class="filter-item">
+            <input type="checkbox" id="status-denied" name="status" value="Denied / Rejected">
+            <label for="status-denied">Denied / Rejected</label>
+          </div>
+           <div class="filter-item">
+            <input type="checkbox" id="status-other" name="status" value="Other / Miscellaneous">
+            <label for="status-other">Other / Miscellaneous</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-mixed" name="status" value="Mixed / Partially Successful">
+            <label for="status-mixed">Mixed / Partially Successful</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-pending" name="status" value="In Progress / Pending">
+            <label for="status-pending">In Progress / Pending</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-reversed" name="status" value="Reversed / Remanded">
+            <label for="status-reversed">Reversed / Remanded</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-policy" name="status" value="Policy / Law Related">
+            <label for="status-policy">Policy / Law Related</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="status-na" name="status" value="Not Available">
+            <label for="status-na">Not Available</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-group-header">
+          <span>Categories</span>
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="white" stroke-width="2"><path d="M19 9l-7 7-7-7"></path></svg>
+        </div>
+        <div class="filter-values">
+           <div class="filter-item">
+            <input type="checkbox" id="filter-cat1" name="cat1">
+            <label for="filter-cat1">Category 1</label>
+          </div>
+          <div class="filter-item">
+            <input type="checkbox" id="filter-cat2" name="cat2">
+            <label for="filter-cat2">Category 2</label>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="map-container" class="flex-grow flex items-center justify-center relative overflow-hidden">
+        <div id="info-box" 
+          class="absolute w-64 p-4 bg-black bg-opacity-90 rounded-lg shadow-lg border border-white 
+              invisible opacity-0 transition-opacity duration-300 ease-in-out pointer-events-none">
+          <h2 id="info-country-name" class="text-xl font-bold text-gray-100"></h2>
+          <h3 id="info-title" class="text-lg font-semibold text-gray-200 mt-2"></h3>
+          <p id="info-text" class="text-sm text-gray-200 mt-1"></p>
+        </div>
+
+        <div id="tooltip" class="absolute p-2 text-sm bg-black bg-opacity-75 text-white rounded-md invisible opacity-0 transition-opacity duration-200 pointer-events-none"></div>
+        
+        <div id="legend" style="z-index: 10;" class="absolute bottom-5 left-5 p-3 bg-black bg-opacity-80 border rounded-lg shadow-lg text-xs text-white">
+          <div class="font-bold mb-2">Climate Cases</div>
+          <div id="legend-items"></div>
+        </div>
+    </div>
+  </main>
 
   <script type="module" src="/src/main.js"></script>
 

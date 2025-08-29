@@ -9,7 +9,7 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
+  color: rgba(0, 0, 0, 0.87);
   background-color: #242424;
 
   font-synthesis: none;
@@ -24,7 +24,7 @@ a {
   text-decoration: inherit;
 }
 a:hover {
-  color: #535bf2;
+  color: #141414;
 }
 
 h1 {
@@ -72,7 +72,7 @@ button {
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  background: #242424;
 }
 button:focus,
 button:focus-visible {
@@ -92,3 +92,288 @@ button:focus-visible {
   }
 }
 
+/* --- CUSTOM MAP STYLES --- */
+
+/* Basic styling */
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  display: flex;
+  flex-direction: column; /* Ensure body takes full height */
+  min-height: 100vh;
+  background-color: #000000; /* Dark blue-gray background */
+}
+
+/* Base style for all countries */
+.land {
+  stroke: #ffffffb6; /* Mid-gray for borders */
+  stroke-width: 0.5px;
+}
+
+/* Style for interactive countries (those with cases) */
+.land.interactive {
+  cursor: pointer;
+}
+
+/* Hover effect for interactive countries */
+.land.interactive:hover {
+  stroke: #ffffff;
+  stroke-width: 1px;
+}
+
+/* Style for non-interactive countries (0 cases) */
+.land.non-interactive {
+  cursor: default;
+}
+
+/* Style for the latitude/longitude lines */
+.graticule {
+  fill: none;
+  stroke: #ffffff; /* White for grid lines */
+  stroke-width: 0.5px;
+  stroke-opacity: 0.5; /* Make them slightly transparent */
+}
+
+/* Transparent sphere outline that captures mouse events */
+.sphere {
+  fill: #00000000; /* Black fill for the globe */
+  stroke: #4B5563; /* Mid-gray for the outer sphere stroke */
+  stroke-width: 0.5px;
+}
+
+/* Cursor styles for interaction */
+.globe {
+  cursor: grab;
+  background-color: #00000000; /* Match the body background */
+}
+
+.globe:active {
+  cursor: grabbing;
+}
+
+/* Style for the selected country */
+.active-country {
+  fill: rgb(230, 255, 1) !important;
+  stroke: #ffffff00; /* White stroke for the active country */
+  stroke-width: 1.5px;
+}
+
+/* Style for the climate contour layer */
+.climate-contour {
+  fill-opacity: 0.6;
+  stroke: none;
+}
+
+.climate-canvas {
+  image-rendering: pixelated; /* Makes raster data look crisp */
+}
+
+/* Main content area is now a flex container */
+main {
+  display: flex;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+#map-container {
+  position: relative;
+  background-color: #000000;
+  z-index: 2;
+  flex-grow: 1; /* Map container takes remaining space */
+}
+
+/* Styling for the slider container in the header */
+#slider-container {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  padding: 0 20px;
+  gap: 20px;
+  visibility: hidden; /* Hidden by default */
+  border-right: 1px solid white;
+}
+
+#year-label {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: white;
+  min-width: 80px;
+  text-align: center;
+}
+
+/* Custom Styling for the Range Slider */
+#year-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 50%;
+  height: 4px;
+  background: #333;
+  border: 1px solid #ffffff;
+  outline: none;
+  border-radius: 0;
+}
+
+#year-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 24px;
+  background: #ffffff;
+  border: 1px solid #000000;
+  cursor: pointer;
+  border-radius: 0;
+  margin-top: -11px;
+}
+
+#year-slider::-moz-range-thumb {
+  width: 12px;
+  height: 24px;
+  background: #ffffff;
+  border: 1px solid #000000;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+/* Styling for the Filter Panel */
+#filter-panel {
+  width: 300px; /* Fixed width for the panel */
+  flex-shrink: 0; /* Prevents the panel from shrinking */
+  background-color: #000000;
+  color: #ffffff;
+  padding: 1rem;
+  border-right: 1px solid #ffffff;
+  overflow-y: auto; /* Allows scrolling if content overflows */
+}
+
+.search-container {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+#country-search-input {
+  width: 100%;
+  background-color: #000;
+  border: 1px solid #fff;
+  color: #fff;
+  padding: 0.5rem;
+  padding-right: 60px; /* Space for the button */
+  border-radius: 0;
+}
+
+#country-search-input::placeholder {
+  color: #aaa;
+}
+
+#country-search-btn {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  bottom: 4px;
+  background-color: #000000;
+  border: 1px solid #fff;
+  color: #fff;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  border-radius: 0;
+}
+
+/* --- NEW: Styling for Autocomplete --- */
+#autocomplete-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #1a1a1a;
+  border: 1px solid #fff;
+  border-top: none;
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.autocomplete-item {
+  padding: 0.5rem;
+  cursor: pointer;
+  color: #fff;
+}
+
+.autocomplete-item:hover {
+  background-color: #333;
+}
+/* --- End of Autocomplete Styling --- */
+
+
+.filter-group {
+  border-bottom: 1px solid #555;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.filter-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.filter-group-header svg {
+  transition: transform 0.2s ease-in-out;
+}
+
+.filter-group-header.expanded svg {
+  transform: rotate(180deg);
+}
+
+.filter-values {
+  padding-left: 1rem;
+  margin-top: 0.5rem;
+  display: none; /* Hidden by default, shown by JS */
+}
+
+.filter-group-header.expanded + .filter-values {
+  display: block; /* Show when header is expanded */
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+.filter-item input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #000;
+  margin: 0;
+  font: inherit;
+  color: currentColor;
+  width: 1.15em;
+  height: 1.15em;
+  border: 1px solid currentColor;
+  border-radius: 0;
+  transform: translateY(-0.075em);
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+}
+
+.filter-item input[type="checkbox"]::before {
+  content: "";
+  width: 0.65em;
+  height: 0.65em;
+  transform: scale(0);
+  transition: 120ms transform ease-in-out;
+  box-shadow: inset 1em 1em #fff;
+}
+
+.filter-item input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+.filter-item label {
+  padding-left: 0.75rem;
+  cursor: pointer;
+}
