@@ -19,7 +19,8 @@
       <button id="toggle-cases-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Climate Cases</button>
       <button id="toggle-climate-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Temperature</button>
       <button id="toggle-climate-raster-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Emmission</button>
-      
+      <button id="download-svg-btn" class="px-4 py-2 bg-black hover:bg-gray-800 transition-colors rounded-none border-r border-white">Download SVG</button>
+
       <!-- Slider is inside the header -->
       <div id="slider-container">
           <label id="year-label" for="year-slider">2023</label>
@@ -88,33 +89,60 @@
 
       <div class="filter-group">
         <div class="filter-group-header">
-          <span>Categories</span>
+          <span>Issues</span>
            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="white" stroke-width="2"><path d="M19 9l-7 7-7-7"></path></svg>
         </div>
         <div class="filter-values">
            <div class="filter-item">
-            <input type="checkbox" id="filter-cat1" name="cat1">
-            <label for="filter-cat1">Category 1</label>
+              <input type="checkbox" id="filter-cat1" name="category" value="Fire">
+              <label for="filter-cat1">Fires</label>
+            </div>
+          <div class="filter-item">
+              <input type="checkbox" id="filter-cat2" name="category" value="Emission">
+              <label for="filter-cat2" >Emissions</label>
           </div>
           <div class="filter-item">
-            <input type="checkbox" id="filter-cat2" name="cat2">
-            <label for="filter-cat2">Category 2</label>
+              <input type="checkbox" id="filter-cat2" name="category" value="Extraction|Mining|Drilling">
+              <label for="filter-cat3" >Illegal Extraction</label>
+          </div>
+          <div class="filter-item">
+              <input type="checkbox" id="filter-cat2" name="category" value="Land">
+              <label for="filter-cat4" >Land Dispossesion</label>
+          </div>
+          <div class="filter-item">
+              <input type="checkbox" id="filter-cat2" name="category" value="Coal">
+              <label for="filter-cat5" >Coal</label>
+          </div>
+          <div class="filter-item">
+              <input type="checkbox" id="filter-cat2" name="category" value="Deforestation">
+              <label for="filter-cat6" >Deforestation</label>
+          </div>
+          <div class="filter-item">
+              <input type="checkbox" id="filter-cat2" name="category" value="Sea Level">
+              <label for="filter-cat7" >Sea Level Rise</label>
+          </div>
+          <div class="filter-item">
+              <input type="checkbox" id="filter-cat2" name="category" value="Green">
+              <label for="filter-cat8" >Greenwashing</label>
           </div>
         </div>
       </div>
-
+      <div style="width: 250px" class="absolute text-xs bottom-5">Climate Change Litigation Database sourced from Sabin Center for Climate Change Law. <u>www.climatecasechart.com</u></div>
     </div>
 
     <div id="map-container" class="flex-grow flex items-center justify-center relative overflow-hidden">
         <div id="info-box" 
-          class="absolute w-64 p-4 bg-black bg-opacity-90 rounded-lg shadow-lg border border-white 
-              invisible opacity-0 transition-opacity duration-300 ease-in-out pointer-events-none">
-          <h2 id="info-country-name" class="text-xl font-bold text-gray-100"></h2>
-          <h3 id="info-title" class="text-lg font-semibold text-gray-200 mt-2"></h3>
-          <p id="info-text" class="text-sm text-gray-200 mt-1"></p>
+          class="invisible opacity-0 transition-opacity duration-300 ease-in-out pointer-events-none">
+          <div id="info-box-header">
+            <h2 id="info-country-name"></h2>
+            <button id="info-box-close">&times;</button>
+          </div>
+          <div id="info-box-content">
+            <!-- Case table will be dynamically injected here -->
+          </div>
         </div>
 
-        <div id="tooltip" class="absolute p-2 text-sm bg-black bg-opacity-75 text-white rounded-md invisible opacity-0 transition-opacity duration-200 pointer-events-none"></div>
+        <div id="tooltip" class="absolute p-2 text-sm bg-black bg-opacity-100 text-white rounded-md invisible opacity-0 transition-opacity duration-200 pointer-events-none"></div>
         
         <div id="legend" style="z-index: 10;" class="absolute bottom-5 left-5 p-3 bg-black bg-opacity-80 border rounded-lg shadow-lg text-xs text-white">
           <div class="font-bold mb-2">Climate Cases</div>

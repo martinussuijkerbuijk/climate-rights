@@ -4,9 +4,8 @@ import 'https://cdn.skypack.dev/d3-geo-projection@4';
 
 // --- Map Configuration ---
 const width = 2010;
-const height = 1275;
+const height = 1280;
 const worldJsonUrl = 'https://unpkg.com/world-atlas@2/countries-110m.json';
-// IMPORTANT: Update this path to your CSV that includes the 'Status' column
 const caseDataUrl = 'CASES_COMBINED_status.csv'; 
 const climateContoursUrl = 'sea_level_contours_qgis.topojson'; 
 const baseScale = 200; 
@@ -15,8 +14,6 @@ const baseScale = 200;
 const mapContainer = d3.select('#map-container');
 const infoBox = d3.select('#info-box');
 const infoCountryName = d3.select('#info-country-name');
-const infoTitle = d3.select('#info-title');
-const infoText = d3.select('#info-text');
 const tooltip = d3.select('#tooltip');
 const legendItems = d3.select('#legend-items');
 const sliderContainer = d3.select('#slider-container');
@@ -28,7 +25,6 @@ const autocompleteResults = d3.select('#autocomplete-results');
 
 
 // --- RASTER LAYER HANDLING (Unchanged) ---
-// ... (code for raster layers is unchanged)
 const rasterLayers = {
     emission: {
         id: 'emission',
@@ -58,7 +54,6 @@ let climateCanvasContext = null;
 function loadClimateRasterData(layerId) {
     const layer = rasterLayers[layerId];
     if (!layer || !layer.url) {
-        console.error("Invalid layer ID or URL for raster data:", layerId);
         return;
     }
     return d3.json(layer.url).then(data => {
@@ -169,52 +164,113 @@ let isClimateLayerVisible = false;
 let areCasesLoaded = false;
 let isCasesLayerVisible = false;
 let allCasesData = [];
-// NEW: A Set to store the active status filters
 let activeStatusFilters = new Set();
+let activeCategoryFilters = new Set(); 
+let activeCountryName = null; 
 
 
-// --- HELPER FUNCTIONS (Unchanged) ---
-function hideInfoBox() { infoBox.classed('opacity-100', false).classed('opacity-0', true).classed('invisible', true); }
+// --- HELPER FUNCTIONS ---
+function hideInfoBox() { 
+    activeCountryName = null; 
+    infoBox.classed('opacity-100', false)
+           .classed('opacity-0', true)
+           .classed('invisible', true)
+           .style('pointer-events', 'none'); 
+}
 function hideTooltip() { tooltip.classed('opacity-100', false).classed('opacity-0', true).classed('invisible', true); }
 function clearLegend() { legendItems.selectAll('*').remove(); }
 
 
-// --- CASES LAYER & FILTERING LOGIC ---
+function renderInfoBoxContent() {
+    if (!activeCountryName) {
+        return; 
+    }
 
-// MODIFIED: This function is now the central point for all filtering.
-function updateMap() {
-    if (!areCasesLoaded) return;
+    const contentDiv = d3.select('#info-box-content');
+    contentDiv.html(''); 
 
     const selectedYear = yearSlider.property('value');
+    let countryCases = allCasesData.filter(d => 
+        d.Jurisdictions === activeCountryName && 
+        d['Filing Year'] <= selectedYear
+    );
+
+    if (activeStatusFilters.size > 0) {
+        countryCases = countryCases.filter(d => activeStatusFilters.has(d.Status));
+    }
+
+    if (activeCategoryFilters.size > 0) {
+        countryCases = countryCases.filter(d => {
+            const issueText = d['Extracted Climate Issue']?.toLowerCase() || '';
+            return Array.from(activeCategoryFilters).some(keyword => issueText.includes(keyword.toLowerCase()));
+        });
+    }
+
+    if (countryCases.length > 0) {
+        const table = contentDiv.append('table');
+        const thead = table.append('thead').append('tr');
+        const columnsToShow = ['Case Name', 'Filing Year', 'Status', 'Extracted Climate Issue'];
+        
+        columnsToShow.forEach(col => thead.append('th').text(col));
+        
+        const tbody = table.append('tbody');
+        countryCases.forEach(caseData => {
+            const row = tbody.append('tr');
+
+            row.on('mouseover', function(event) {
+                tooltip.html(caseData.Description || 'No description available.')
+                    .classed('invisible', false)
+                    .classed('opacity-0', false)
+                    .classed('opacity-100', true)
+                    .style('z-index', 1001);
+            })
+            .on('mousemove', function(event) {
+                const [x, y] = d3.pointer(event, mapContainer.node());
+                tooltip.style('left', `${x + 15}px`).style('top', `${y}px`);
+            })
+            .on('mouseout', function() {
+                hideTooltip();
+            });
+            
+            columnsToShow.forEach(col => {
+                row.append('td').text(caseData[col] || 'N/A');
+            });
+        });
+    } else {
+        contentDiv.append('p').text('No case data available for this country based on current filters.');
+    }
+}
+
+
+// --- CASES LAYER & FILTERING LOGIC ---
+function updateMap() {
+    if (!areCasesLoaded) {
+        return;
+    }
+    const selectedYear = yearSlider.property('value');
     yearLabel.text(selectedYear);
-
-    // 1. Filter by Year
     let filteredCases = allCasesData.filter(d => d['Filing Year'] <= selectedYear);
-
-    // 2. Filter by Status (if any statuses are selected)
+    
     if (activeStatusFilters.size > 0) {
         filteredCases = filteredCases.filter(d => activeStatusFilters.has(d.Status));
     }
+    
+    if (activeCategoryFilters.size > 0) {
+        filteredCases = filteredCases.filter(d => {
+            const issueText = d['Extracted Climate Issue']?.toLowerCase() || '';
+            if (!issueText) return false;
+            return Array.from(activeCategoryFilters).some(keyword => issueText.includes(keyword.toLowerCase()));
+        });
+    }
 
-    // 3. Recalculate counts per country based on the final filtered list
-    const caseCountsMap = d3.rollup(
-        filteredCases,
-        v => v.length,
-        d => d.Jurisdictions
-    );
-
-    // Update the caseCount property for each country
+    const caseCountsMap = d3.rollup(filteredCases, v => v.length, d => d.Jurisdictions);
     countries.forEach(country => {
         const count = caseCountsMap.get(country.properties.name) || 0;
         country.properties.caseCount = count;
     });
-
-    // Re-style the countries on the map
     applyCaseStyles();
+    renderInfoBoxContent(); 
 }
-
-
-// applyCaseStyles and resetCountryStyles remain unchanged
 function applyCaseStyles() {
     countryPaths.selectAll('path')
         .attr('class', d => d.properties.caseCount > 0 ? 'land interactive' : 'land non-interactive')
@@ -223,7 +279,10 @@ function applyCaseStyles() {
             return '#1b1b1bff';
         })
         .on('click', (event, d) => {
-            if (d.properties.caseCount === 0) { event.stopPropagation(); return; }
+            if (d.properties.caseCount === 0) { 
+                event.stopPropagation(); 
+                return; 
+            }
             event.stopPropagation();
             hideTooltip();
             flyTo(d.properties.name);
@@ -249,9 +308,10 @@ function resetCountryStyles() {
         .on('mouseout', null);
     hideTooltip();
 }
-
-// toggleCasesLayer now calls the main updateMap function
 function toggleCasesLayer() {
+    d3.select('#toggle-cases-btn').classed('no-animation', true); //turn animation off
+
+
     isCasesLayerVisible = !isCasesLayerVisible;
     if (!isCasesLayerVisible) {
         resetCountryStyles();
@@ -284,8 +344,7 @@ function toggleCasesLayer() {
 }
 
 
-// --- INTERACTION & LEGENDS (Unchanged) ---
-// ... (code for drag, zoom, legends, etc. is unchanged)
+// --- INTERACTION & LEGENDS ---
 function destroyClimateLayer() {
     if (climateContourData) {
         climateLayer.selectAll('path').remove();
@@ -312,21 +371,25 @@ const drag = d3.drag()
         projection.rotate(newRotation);
         redraw();
     });
+
+const zoomStartHandler = () => {
+    hideInfoBox();
+    hideTooltip();
+    destroyClimateLayer();
+};
+
 const zoom = d3.zoom()
     .scaleExtent([0.75, 15])
-    .on('start', () => { 
-        hideInfoBox(); 
-        hideTooltip();
-        destroyClimateLayer();
-    })
+    .on('start', zoomStartHandler)
     .on('zoom', (event) => {
         projection.scale(baseScale * event.transform.k);
         redraw();
     });
+
 svg.call(drag).call(zoom);
 svg.on('click', () => {
     hideInfoBox();
-    autocompleteResults.html(''); // Also hide autocomplete on globe click
+    autocompleteResults.html('');
 });
 const createClimateCasesLegend = () => {
     clearLegend();
@@ -344,6 +407,7 @@ function createElevationLegend() {
     legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2 border border-gray-400').style('background-color', d => seaLevelColorScale(d.avg));
     legendItemsElements.append('span').attr('class', 'text-white').text(d => `${d.min.toFixed(2)}-${d.max.toFixed(2)}m`);
 }
+
 function redraw() {
     countryPaths.selectAll('path').attr('d', pathGenerator);
     if (isClimateLayerVisible && climateContourData) {
@@ -380,32 +444,62 @@ function toggleClimateLayer() {
         clearLegend();
     }
 }
+
+
+// --- flyTo function now builds and shows the data table modal ---
 function flyTo(countryName) {
-    hideInfoBox();
+    activeCountryName = countryName; 
     const targetCountry = countries.find(c => c.properties.name === countryName);
-    if (!targetCountry) return;
-    countryPaths.selectAll('.active-country').classed('active-country', false).style('fill', d => caseColorScale(d.properties.caseCount));
-    countryPaths.selectAll('path').filter(d => d.properties.name === countryName).classed('active-country', true).style('fill', null);
+    
+    if (!targetCountry) {
+        console.error(`Could not find target country: ${countryName}`);
+        return;
+    }
+
+    countryPaths.selectAll('.active-country')
+      .classed('active-country', false)
+      .style('fill', d => caseColorScale(d.properties.caseCount));
+
+    countryPaths.selectAll('path')
+      .filter(d => d.properties.name === countryName)
+      .classed('active-country', true)
+      .style('fill', null);
+
     const centroid = d3.geoCentroid(targetCountry);
     const targetRotation = [-centroid[0], -centroid[1]];
     const targetScale = 800;
-    svg.transition().duration(1250).tween('zoomAndRotate', () => {
-        const r = d3.interpolate(projection.rotate(), targetRotation);
-        const s = d3.interpolate(projection.scale(), baseScale * 1.5);
-        return function(t) { projection.rotate(r(t)).scale(s(t)); redraw(); };
-    }).transition().duration(1000).tween('zoomIn', () => {
-        const s = d3.interpolate(projection.scale(), targetScale);
-        return function(t) { projection.scale(s(t)); redraw(); };
-    }).on('end', () => {
-        const finalTransform = d3.zoomIdentity.scale(projection.scale() / baseScale);
-        svg.call(zoom.transform, finalTransform);
-        infoCountryName.text(targetCountry.properties.name);
-        infoTitle.text("Climate Case Information");
-        infoText.text(`A total of ${targetCountry.properties.caseCount || 0} cases have been filed.`);
-        const centerX = mapContainer.node().clientWidth / 2;
-        const centerY = mapContainer.node().clientHeight / 2;
-        infoBox.style('right', null).style('left', `${centerX + 100}px`).style('top', `${centerY}px`).style('transform', 'translateY(-50%)').style('z-index', 1000).classed('invisible', false).classed('opacity-0', false).classed('opacity-100', true);
-    });
+
+    zoom.on('start', null);
+
+    svg.transition()
+        .duration(1250)
+        .tween('zoomAndRotate', () => {
+            const r = d3.interpolate(projection.rotate(), targetRotation);
+            const s = d3.interpolate(projection.scale(), baseScale * 1.5);
+            return function(t) { projection.rotate(r(t)).scale(s(t)); redraw(); };
+        })
+        .transition()
+        .duration(1000)
+        .tween('zoomIn', () => {
+            const s = d3.interpolate(projection.scale(), targetScale);
+            return function(t) { projection.scale(s(t)); redraw(); };
+        })
+        .on('end', () => {
+            infoCountryName.text(targetCountry.properties.name);
+            renderInfoBoxContent(); 
+
+            infoBox.classed('invisible', false)
+                   .classed('opacity-0', false)
+                   .classed('opacity-100', true)
+                   .style('pointer-events', 'auto');
+            
+            const finalTransform = d3.zoomIdentity.scale(projection.scale() / baseScale);
+            svg.call(zoom.transform, finalTransform);
+
+            setTimeout(() => {
+                zoom.on('start', zoomStartHandler);
+            }, 100);
+        });
 }
 
 
@@ -417,17 +511,50 @@ d3.json(worldJsonUrl).then(topology => {
     console.error("Error loading world geography:", error);
 });
 
+// --- NEW SVG DOWNLOAD FUNCTION ---
+async function downloadSVG() {
+    try {
+        // 1. Fetch the external CSS stylesheet
+        const response = await fetch('style.css');
+        const cssText = await response.text();
+
+        // 2. Get the SVG element's current HTML
+        const svgNode = svg.node();
+        let svgString = new XMLSerializer().serializeToString(svgNode);
+
+        // 3. Embed the CSS within a <style> tag inside the SVG
+        const styleElement = `<style type="text/css"><![CDATA[${cssText}]]></style>`;
+        svgString = svgString.replace('</svg>', `${styleElement}</svg>`);
+
+        // 4. Add the necessary XML declaration and doctype for a standalone file
+        const fullSvg = `<?xml version="1.0" standalone="no"?>\r\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\r\n${svgString}`;
+
+        // 5. Create a blob and trigger the download
+        const blob = new Blob([fullSvg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'climate_rights_map.svg';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error('Error downloading SVG:', error);
+        alert('Could not download the map. See console for details.');
+    }
+}
+
 
 // --- EVENT LISTENERS ---
-
 d3.select('#toggle-climate-raster-btn').on('click', () => toggleRasterLayer('emission'));
 d3.select('#toggle-climate-btn').on('click', () => toggleRasterLayer('temperature'));
 d3.select('#toggle-cases-btn').on('click', toggleCasesLayer);
+yearSlider.on('input', () => { updateMap(); });
 
-// MODIFIED: yearSlider now calls the main updateMap function
-yearSlider.on('input', () => {
-    updateMap();
-});
+d3.select('#info-box-close').on('click', hideInfoBox);
+d3.select('#download-svg-btn').on('click', downloadSVG); // NEW: Attach listener
 
 
 // --- SEARCH AND AUTOCOMPLETE FUNCTIONALITY (Unchanged) ---
@@ -466,27 +593,36 @@ countrySearchInput.on('keydown', (event) => {
     }
 });
 
-// --- NEW: FILTER PANEL FUNCTIONALITY ---
-
-// Add click listeners to all filter group headers to toggle visibility
+// --- FILTER PANEL FUNCTIONALITY ---
 d3.selectAll('.filter-group-header').on('click', function() {
-    // 'this' refers to the clicked header element
     const header = d3.select(this);
     header.classed('expanded', !header.classed('expanded'));
 });
-
-// Add change listeners to all status filter checkboxes
 d3.selectAll('input[name="status"]').on('change', function() {
-    // 'this' refers to the changed checkbox element
     const checkbox = d3.select(this);
     const status = checkbox.property('value');
     const isChecked = checkbox.property('checked');
-
     if (isChecked) {
-        activeStatusFilters.add(status); // Add the status to our set
+        activeStatusFilters.add(status);
     } else {
-        activeStatusFilters.delete(status); // Remove it
+        activeStatusFilters.delete(status);
     }
-
-    updateMap(); // Redraw the map with the new filters
+    updateMap();
 });
+
+d3.selectAll('input[name="category"]').on('change', function() {
+    const checkbox = d3.select(this);
+    const keywords = checkbox.property('value').split('|');
+    const isChecked = checkbox.property('checked');
+
+    keywords.forEach(keyword => {
+        if (isChecked) {
+            activeCategoryFilters.add(keyword);
+        } else {
+            activeCategoryFilters.delete(keyword);
+        }
+    });
+    
+    updateMap();
+});
+

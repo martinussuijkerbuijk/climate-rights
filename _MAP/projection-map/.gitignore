@@ -56,6 +56,7 @@ geoTiff/
 qgis*.qmd
 *.topojson
 *.tiff
+*.tif
 folium_map.html
 *.qgz
 
