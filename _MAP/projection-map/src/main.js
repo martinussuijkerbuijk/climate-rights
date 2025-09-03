@@ -23,48 +23,48 @@ const countrySearchInput = d3.select('#country-search-input');
 const countrySearchBtn = d3.select('#country-search-btn');
 const autocompleteResults = d3.select('#autocomplete-results');
 
+// Add these variables at the top with other state variables
+let renderTimeout = null;
+let isRendering = false;
+let lastRenderTime = 0;
+const RENDER_DEBOUNCE_MS = 150; 
+const MIN_RENDER_INTERVAL = 100; 
 
-// --- RASTER LAYER HANDLING (Unchanged) ---
+
+// --- RASTER LAYER HANDLING ---
 const rasterLayers = {
     emission: {
         id: 'emission',
-        url: 'climate_data.json',
         title: 'Emission Data',
         domain: [0.00, 0.21, 0.41, 0.62, 0.82, 1.03, 1.24, 1.44, 1.65, 1.85, 2.06],
-        colors: [
-            '#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6',
-            '#4292c6', '#2171b5', '#08519c', '#08306b', '#a50f15', '#67000d'
-        ],
+        colors: ['black', '#1f1f1fff', '#696969ff', '#72838bff', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b', '#a50f6bff', '#d4009fff'],
         data: null,
         isVisible: false,
+        dataCache: {} // Now a time-series layer
     },
     temperature: {
         id: 'temperature',
-        url: 'surface_temp_20190701.json',
         title: 'Temperature Anomaly',
-        domain: [205.0, 220., 240., 260., 280., 300., 320.],
+        domain: [-75., -52.5, -29.8, -7.2, 15.4, 38., 61.],
         colors: ['#34258fff', '#681a72ff', '#9d9e48ff', '#ccb21fff', '#f0520eff', '#eb1f00ff', '#ff0000ff'],
         data: null,
         isVisible: false,
+        dataCache: {}
+    },
+    burn: {
+        id: 'burn',
+        title: 'Burned Area',
+        domain: [1, 30, 60, 91, 122, 152, 183, 214, 244, 275, 305, 335, 365],
+        colors: ['#ffffd4', '#fee391', '#fec44f', '#fe9929', '#ec7014', '#cc4c02', '#993404', '#662506'],
+        data: null,
+        isVisible: false,
+        dataCache: {}
     }
 };
 let activeRasterLayerId = null; 
 let climateCanvas = null;
 let climateCanvasContext = null;
-function loadClimateRasterData(layerId) {
-    const layer = rasterLayers[layerId];
-    if (!layer || !layer.url) {
-        return;
-    }
-    return d3.json(layer.url).then(data => {
-        layer.data = data;
-        if (!climateCanvas) {
-            createClimateCanvas();
-        }
-    }).catch(error => {
-        console.error(`Error loading ${layer.title} raster data:`, error);
-    });
-}
+
 function createClimateCanvas() {
     climateCanvas = d3.select('#map-container')
         .append('canvas')
@@ -80,71 +80,328 @@ function createClimateCanvas() {
         .style('visibility', 'hidden')
         .style('z-index', -1);
     climateCanvasContext = climateCanvas.node().getContext('2d');
-    climateCanvasContext.imageSmoothingEnabled = true;
+    climateCanvasContext.imageSmoothingEnabled = false; 
+    climateCanvasContext.globalCompositeOperation = 'source-over';
 }
+
+function debouncedRenderClimateRaster() {
+    if (renderTimeout) {
+        clearTimeout(renderTimeout);
+    }
+    const now = Date.now();
+    const timeSinceLastRender = now - lastRenderTime;
+    if (timeSinceLastRender < MIN_RENDER_INTERVAL) {
+        renderTimeout = setTimeout(() => {
+            renderClimateRasterCanvas();
+        }, MIN_RENDER_INTERVAL - timeSinceLastRender);
+    } else {
+        renderTimeout = setTimeout(() => {
+            renderClimateRasterCanvas();
+        }, RENDER_DEBOUNCE_MS);
+    }
+}
+
 function renderClimateRasterCanvas() {
-    if (!activeRasterLayerId || !rasterLayers[activeRasterLayerId].data || !climateCanvasContext) return;
+    if (isRendering || !activeRasterLayerId || !rasterLayers[activeRasterLayerId].data || !climateCanvasContext) {
+        return;
+    }
+    isRendering = true;
+    lastRenderTime = Date.now();
     const layer = rasterLayers[activeRasterLayerId];
     const { ncols, nrows, xllcorner, yllcorner, cellsize, data: rawData } = layer.data;
     let dataArray = rawData || layer.data.values;
-    if (!Array.isArray(dataArray)) return;
-    const colorScale = d3.scaleLinear().domain(layer.domain).range(layer.colors);
+    if (!Array.isArray(dataArray)) {
+        isRendering = false;
+        return;
+    }
+    const colorScale = d3.scaleQuantize().domain(d3.extent(layer.domain)).range(layer.colors);
     climateCanvasContext.clearRect(0, 0, width, height);
-    const cellSizePixels = Math.max(1, Math.ceil(projection.scale() / 200));
-    for (let row = 0; row < nrows; row++) {
-        for (let col = 0; col < ncols; col++) {
+    const scale = projection.scale();
+    const cellSizePixels = Math.max(0.5, Math.min(8, scale / 100));
+    const bounds = { left: -cellSizePixels, right: width + cellSizePixels, top: -cellSizePixels, bottom: height + cellSizePixels };
+    const skipFactor = scale < 300 ? Math.max(1, Math.floor(500 / scale)) : 1; 
+    climateCanvasContext.globalAlpha = 0.7;
+    for (let row = 0; row < nrows; row += skipFactor) {
+        for (let col = 0; col < ncols; col += skipFactor) {
             const index = row * ncols + col;
             const value = dataArray[index];
-            if (value === null || value === undefined || isNaN(value) || value === -9999) continue;
+            if (value === null || value === undefined || isNaN(value) || (activeRasterLayerId !== 'temperature' && value <= 0) ) continue;
             const lon = xllcorner + col * cellsize;
             const lat = yllcorner + ((nrows - row - 0.5) * cellsize);
             const projected = projection([lon, lat]);
             if (!projected) continue;
             const [x, y] = projected;
-            if (x < -cellSizePixels || x > width + cellSizePixels || y < -cellSizePixels || y > height + cellSizePixels) continue;
+            if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue;
             climateCanvasContext.fillStyle = colorScale(value);
-            climateCanvasContext.globalAlpha = 0.7;
-            climateCanvasContext.fillRect(x - cellSizePixels / 2, y - cellSizePixels / 2, cellSizePixels, cellSizePixels);
+            climateCanvasContext.fillRect(
+                Math.round(x - cellSizePixels / 2), 
+                Math.round(y - cellSizePixels / 2), 
+                Math.max(1, Math.round(cellSizePixels * skipFactor)), 
+                Math.max(1, Math.round(cellSizePixels * skipFactor))
+            );
         }
     }
-    createClimateRasterLegend(layer, colorScale);
+    isRendering = false;
+    createAndUpdateLegends();
 }
+
+
 function createClimateRasterLegend(layer, colorScale) {
-    clearLegend();
-    legendItems.append('div').attr('class', 'text-sm font-semibold mb-2 text-white').text(layer.title);
-    const legendData = colorScale.domain();
-    const legendItemsElements = legendItems.selectAll('.climate-legend-item').data(legendData).join('div').attr('class', 'climate-legend-item flex items-center mb-1');
-    legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => colorScale(d));
-    legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => d.toFixed(2));
+    const group = legendItems.append('div').attr('id', 'raster-legend-group');
+    group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white').text(layer.title);
+    
+    if (layer.id === 'burn') {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const dayToMonth = (day) => {
+            if (day <= 1) return months[0];
+            const monthIndex = Math.floor((day - 1) / 30.4);
+            return months[Math.min(monthIndex, 11)];
+        };
+        const legendData = layer.colors.map(color => {
+            const extent = colorScale.invertExtent(color);
+            const startMonth = dayToMonth(extent[0]);
+            const endMonth = dayToMonth(extent[1]);
+            let label = startMonth === endMonth ? startMonth : `${startMonth} - ${endMonth}`;
+            if (extent[1] >= 365) label = `${startMonth} - Dec`;
+            return { label, color };
+        }).filter((d, i, self) => i === self.findIndex(t => t.label === d.label));
+        const legendItemsElements = group.selectAll('.climate-legend-item').data(legendData).join('div').attr('class', 'climate-legend-item flex items-center mb-1');
+        legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => d.color);
+        legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => d.label);
+    } else {
+        const legendData = layer.domain; 
+        const legendItemsElements = group.selectAll('.climate-legend-item').data(legendData).join('div').attr('class', 'climate-legend-item flex items-center mb-1');
+        legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => colorScale(d));
+        legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => d.toFixed(2));
+    }
 }
-function toggleRasterLayer(layerId) {
-    const layer = rasterLayers[layerId];
-    if (!layer) return;
-    if (activeRasterLayerId === layerId) {
-        layer.isVisible = false;
-        activeRasterLayerId = null;
-        climateCanvas.style('visibility', 'hidden');
-        clearLegend();
+
+// NEW: Function to load and render emission data by year
+function loadAndRenderEmissionData(year) {
+    const layer = rasterLayers.emission;
+    const cachedData = layer.dataCache[year];
+
+    if (cachedData) {
+        layer.data = cachedData;
+        renderClimateRasterCanvas();
         return;
     }
-    if (activeRasterLayerId && rasterLayers[activeRasterLayerId]) {
-        rasterLayers[activeRasterLayerId].isVisible = false;
-    }
-    activeRasterLayerId = layerId;
-    layer.isVisible = true;
-    if (!layer.data) {
-        loadClimateRasterData(layerId).then(() => {
-            climateCanvas.style('visibility', 'visible');
-            renderClimateRasterCanvas();
-        });
-    } else {
-        climateCanvas.style('visibility', 'visible');
+
+    legendItems.html(`<div class="text-white text-sm">Loading emission data for ${year}...</div>`);
+    const dataUrl = `emission/NO2_${year}-06-01.json`; // Assuming filename structure
+
+    d3.text(dataUrl).then(text => {
+        const cleanedText = text.replace(/NaN/g, 'null');
+        const data = JSON.parse(cleanedText);
+        layer.dataCache[year] = data;
+        layer.data = data;
         renderClimateRasterCanvas();
+    }).catch(error => {
+        console.error(`Error loading or parsing emission data for ${year}:`, error);
+        legendItems.html(`<div class="text-white text-sm">Data not available for ${year}.</div>`);
+        if (climateCanvasContext) climateCanvasContext.clearRect(0, 0, width, height);
+    });
+}
+
+// NEW: Dedicated toggle function for the Emission layer
+function toggleEmissionLayer() {
+    const layer = rasterLayers.emission;
+    
+    if (!layer.isVisible) {
+        if (rasterLayers.burn.isVisible) toggleBurnLayer();
+        if (rasterLayers.temperature.isVisible) toggleTempLayer();
+    }
+
+    layer.isVisible = !layer.isVisible;
+    d3.select('#toggle-climate-raster-btn').classed('active', layer.isVisible);
+
+    if (layer.isVisible) {
+        activeRasterLayerId = 'emission';
+        d3.select('#filter-cat2').property('checked', true);
+        activeCategoryFilters.add('Emission');
+        if (isCasesLayerVisible) updateMap();
+        
+        const yearRange = { min: 2015, max: 2025, default: 2020 };
+        yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
+        yearLabel.text(yearRange.default);
+        sliderContainer.style('visibility', 'visible');
+        if (!climateCanvas) createClimateCanvas();
+        climateCanvas.style('visibility', 'visible');
+        loadAndRenderEmissionData(yearRange.default);
+    } else {
+        activeRasterLayerId = null;
+        d3.select('#filter-cat2').property('checked', false);
+        activeCategoryFilters.delete('Emission');
+        if (isCasesLayerVisible) updateMap();
+
+        if (climateCanvas) climateCanvas.style('visibility', 'hidden');
+        if (isCasesLayerVisible) {
+            const years = allCasesData.map(d => +d['Filing Year']);
+            yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
+            yearLabel.text(yearSlider.property('value'));
+        } else {
+            sliderContainer.style('visibility', 'hidden');
+        }
+        createAndUpdateLegends();
     }
 }
 
 
-// --- GENERAL MAP SETUP (Unchanged) ---
+function loadAndRenderTemperatureData(year) {
+    const layer = rasterLayers.temperature;
+    const cachedData = layer.dataCache[year];
+
+    if (cachedData) {
+        layer.data = cachedData;
+        renderClimateRasterCanvas();
+        return;
+    }
+
+    legendItems.html(`<div class="text-white text-sm">Loading temperature data for ${year}...</div>`);
+    const dataUrl = `temp/surface_temp_${year}-06-01.json`;
+
+    d3.text(dataUrl).then(text => {
+        const cleanedText = text.replace(/NaN/g, 'null');
+        const data = JSON.parse(cleanedText);
+        layer.dataCache[year] = data;
+        layer.data = data;
+        renderClimateRasterCanvas();
+    }).catch(error => {
+        console.error(`Error loading or parsing temperature data for ${year}:`, error);
+        legendItems.html(`<div class="text-white text-sm">Data not available for ${year}.</div>`);
+        if (climateCanvasContext) climateCanvasContext.clearRect(0, 0, width, height);
+    });
+}
+
+function toggleTempLayer() {
+    const layer = rasterLayers.temperature;
+    
+    if (!layer.isVisible) {
+        if (rasterLayers.burn.isVisible) toggleBurnLayer();
+        if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+    }
+
+    layer.isVisible = !layer.isVisible;
+    d3.select('#toggle-climate-btn').classed('active', layer.isVisible);
+
+    if (layer.isVisible) {
+        activeRasterLayerId = 'temperature';
+        d3.select('#filter-cat2').property('checked', true);
+        activeCategoryFilters.add('Emission');
+        if (isCasesLayerVisible) updateMap();
+        
+        const yearRange = { min: 2015, max: 2025, default: 2021 };
+        yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
+        yearLabel.text(yearRange.default);
+        sliderContainer.style('visibility', 'visible');
+        if (!climateCanvas) createClimateCanvas();
+        climateCanvas.style('visibility', 'visible');
+        loadAndRenderTemperatureData(yearRange.default);
+    } else {
+        activeRasterLayerId = null;
+        d3.select('#filter-cat2').property('checked', false);
+        activeCategoryFilters.delete('Emission');
+        if (isCasesLayerVisible) updateMap();
+
+        if (climateCanvas) climateCanvas.style('visibility', 'hidden');
+        if (isCasesLayerVisible) {
+            const years = allCasesData.map(d => +d['Filing Year']);
+            yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
+            yearLabel.text(yearSlider.property('value'));
+        } else {
+            sliderContainer.style('visibility', 'hidden');
+        }
+        createAndUpdateLegends();
+    }
+}
+
+
+function loadAndRenderBurnData(year) {
+    const layer = rasterLayers.burn;
+    const cachedData = layer.dataCache[year];
+
+    if (cachedData) {
+        layer.data = cachedData;
+        renderClimateRasterCanvas();
+        return;
+    }
+
+    legendItems.html(`<div class="text-white text-sm">Loading burn data for ${year}...</div>`);
+    const dataUrl = `burns/burned_area_${year}-01-01.json`; 
+
+    d3.text(dataUrl).then(text => {
+        const cleanedText = text.replace(/NaN/g, 'null');
+        const data = JSON.parse(cleanedText);
+        
+        layer.dataCache[year] = data;
+        layer.data = data;
+        renderClimateRasterCanvas();
+    }).catch(error => {
+        console.error(`Error loading or parsing burn data for ${year}:`, error);
+        legendItems.html(`<div class="text-white text-sm">Data not available for ${year}.</div>`);
+        if (climateCanvasContext) {
+            climateCanvasContext.clearRect(0, 0, width, height);
+        }
+    });
+}
+
+function toggleBurnLayer() {
+    const layer = rasterLayers.burn;
+
+    if (!layer.isVisible) {
+        if (rasterLayers.temperature.isVisible) toggleTempLayer();
+        if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+    }
+
+    layer.isVisible = !layer.isVisible;
+    d3.select('#toggle-burn-btn').classed('active', layer.isVisible);
+
+    if (layer.isVisible) {
+        activeRasterLayerId = 'burn';
+        d3.select('#filter-cat1').property('checked', true);
+        activeCategoryFilters.add('Fire');
+        if (isCasesLayerVisible) updateMap();
+        
+        const yearRange = { min: 2015, max: 2025, default: 2025 };
+        yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
+        yearLabel.text(yearRange.default);
+        sliderContainer.style('visibility', 'visible');
+        if (!climateCanvas) createClimateCanvas();
+        climateCanvas.style('visibility', 'visible');
+        loadAndRenderBurnData(yearRange.default);
+    } else {
+        activeRasterLayerId = null;
+        d3.select('#filter-cat1').property('checked', false);
+        activeCategoryFilters.delete('Fire');
+        if (isCasesLayerVisible) updateMap();
+        
+        if (climateCanvas) climateCanvas.style('visibility', 'hidden');
+        if (isCasesLayerVisible) {
+            const years = allCasesData.map(d => +d['Filing Year']);
+            yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
+            yearLabel.text(yearSlider.property('value'));
+        } else {
+            sliderContainer.style('visibility', 'hidden');
+        }
+        createAndUpdateLegends();
+    }
+}
+
+
+function cleanupRasterResources() {
+    if (renderTimeout) {
+        clearTimeout(renderTimeout);
+        renderTimeout = null;
+    }
+    isRendering = false;
+    
+    if (climateCanvasContext) {
+        climateCanvasContext.clearRect(0, 0, width, height);
+    }
+}
+
+window.addEventListener('beforeunload', cleanupRasterResources);
+
 let elevationLevels = [];
 let seaLevelColorScale = null;
 const svg = mapContainer.append('svg').attr('width', '100%').attr('height', '100%').attr('viewBox', `0 0 ${width} ${height}`).attr('class', 'globe');
@@ -156,7 +413,6 @@ g.append('path').datum(d3.geoGraticule10()).attr('class', 'graticule').attr('d',
 const countryPaths = g.append('g').attr('class', 'country-paths');
 const climateLayer = g.append('g').attr('class', 'climate-layer').style('visibility', 'hidden');
 
-// --- STATE VARIABLES ---
 let countries = [];
 let caseColorScale; 
 let climateContourData = null;
@@ -168,8 +424,6 @@ let activeStatusFilters = new Set();
 let activeCategoryFilters = new Set(); 
 let activeCountryName = null; 
 
-
-// --- HELPER FUNCTIONS ---
 function hideInfoBox() { 
     activeCountryName = null; 
     infoBox.classed('opacity-100', false)
@@ -242,7 +496,6 @@ function renderInfoBoxContent() {
 }
 
 
-// --- CASES LAYER & FILTERING LOGIC ---
 function updateMap() {
     if (!areCasesLoaded) {
         return;
@@ -276,7 +529,7 @@ function applyCaseStyles() {
         .attr('class', d => d.properties.caseCount > 0 ? 'land interactive' : 'land non-interactive')
         .style('fill', d => {
             if (d.properties.caseCount > 0) return caseColorScale(d.properties.caseCount);
-            return '#1b1b1bff';
+            return '#1b1b1b2c';
         })
         .on('click', (event, d) => {
             if (d.properties.caseCount === 0) { 
@@ -301,7 +554,7 @@ function applyCaseStyles() {
 function resetCountryStyles() {
     countryPaths.selectAll('path')
         .attr('class', 'land non-interactive')
-        .style('fill', '#1b1b1b21')
+        .style('fill', '#1b1b1b2c')
         .on('click', null)
         .on('mouseover', null)
         .on('mousemove', null)
@@ -309,42 +562,71 @@ function resetCountryStyles() {
     hideTooltip();
 }
 function toggleCasesLayer() {
-    d3.select('#toggle-cases-btn').classed('no-animation', true); //turn animation off
-
-
+    d3.select('#toggle-cases-btn').classed('no-animation', true);
     isCasesLayerVisible = !isCasesLayerVisible;
-    if (!isCasesLayerVisible) {
+    d3.select('#toggle-cases-btn').classed('active', isCasesLayerVisible);
+
+    if (isCasesLayerVisible) {
+        sliderContainer.style('visibility', 'visible');
+        if (areCasesLoaded) {
+            if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature') {
+                const years = allCasesData.map(d => +d['Filing Year']);
+                yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
+            }
+            updateMap();
+        } else {
+            legendItems.html('<div class="text-white text-sm">Loading case data...</div>');
+            d3.csv(caseDataUrl).then(data => {
+                allCasesData = data;
+                areCasesLoaded = true;
+                const maxCases = d3.max(d3.rollup(allCasesData, v => v.length, d => d.Jurisdictions).values());
+                caseColorScale = d3.scaleLog().domain([1, maxCases]).range(['#ff7c7c8c', '#eb0000c7']);
+                
+                if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature') {
+                    const years = allCasesData.map(d => +d['Filing Year']);
+                    const minYear = d3.min(years);
+                    const maxYear = d3.max(years);
+                    yearSlider.attr('min', minYear).attr('max', maxYear).attr('value', maxYear);
+                }
+                updateMap();
+            }).catch(error => {
+                console.error("Error loading case data:", error);
+                isCasesLayerVisible = false;
+            });
+        }
+    } else {
         resetCountryStyles();
-        clearLegend();
-        sliderContainer.style('visibility', 'hidden'); 
-        return;
+        if (!activeRasterLayerId) {
+            sliderContainer.style('visibility', 'hidden');
+        } else {
+            const layer = rasterLayers[activeRasterLayerId];
+             if(layer.dataCache) {
+                const yearRange = activeRasterLayerId === 'burn' 
+                    ? { min: 2015, max: 2025 } 
+                    : { min: 2015, max: 2025 };
+                yearSlider.attr('min', yearRange.min).attr('max', yearRange.max);
+                yearLabel.text(yearSlider.property('value'));
+             }
+        }
     }
-    sliderContainer.style('visibility', 'visible');
-    if (areCasesLoaded) {
-        updateMap();
-        createClimateCasesLegend();
-        return;
+    createAndUpdateLegends();
+}
+
+function createAndUpdateLegends() {
+    clearLegend();
+    if (activeRasterLayerId) {
+        const layer = rasterLayers[activeRasterLayerId];
+        const colorScale = d3.scaleQuantize().domain(d3.extent(layer.domain)).range(layer.colors);
+        createClimateRasterLegend(layer, colorScale);
     }
-    d3.csv(caseDataUrl).then(data => {
-        allCasesData = data;
-        const years = allCasesData.map(d => +d['Filing Year']);
-        const minYear = d3.min(years);
-        const maxYear = d3.max(years);
-        yearSlider.attr('min', minYear).attr('max', maxYear).attr('value', maxYear);
-        yearLabel.text(maxYear);
-        const maxCases = d3.max(d3.rollup(allCasesData, v => v.length, d => d.Jurisdictions).values());
-        caseColorScale = d3.scaleLog().domain([1, maxCases]).range(['#ff7c7c8c', '#eb0000c7']);
-        areCasesLoaded = true;
-        updateMap(); 
-        createClimateCasesLegend();
-    }).catch(error => {
-        console.error("Error loading case data:", error);
-        isCasesLayerVisible = false; 
-    });
+    if (isCasesLayerVisible) {
+        if (caseColorScale) { 
+            createClimateCasesLegend();
+        }
+    }
 }
 
 
-// --- INTERACTION & LEGENDS ---
 function destroyClimateLayer() {
     if (climateContourData) {
         climateLayer.selectAll('path').remove();
@@ -359,17 +641,17 @@ const drag = d3.drag()
         hideInfoBox(); 
         hideTooltip();
         destroyClimateLayer();
-        if (climateCanvas) climateCanvas.style('visibility', 'hidden');
+        if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '0.3');
     })
     .on('drag', (event) => {
         const currentRotation = projection.rotate();
         const sensitivity = 0.25;
-        const newRotation = [
-            currentRotation[0] + event.dx * sensitivity,
-            currentRotation[1] - event.dy * sensitivity,
-        ];
+        const newRotation = [ currentRotation[0] + event.dx * sensitivity, currentRotation[1] - event.dy * sensitivity ];
         projection.rotate(newRotation);
         redraw();
+    })
+    .on('end', () => {
+        if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '1');
     });
 
 const zoomStartHandler = () => {
@@ -380,10 +662,25 @@ const zoomStartHandler = () => {
 
 const zoom = d3.zoom()
     .scaleExtent([0.75, 15])
-    .on('start', zoomStartHandler)
+    .on('start', () => {
+        hideInfoBox();
+        hideTooltip();
+        destroyClimateLayer();
+        if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '0.3');
+    })
     .on('zoom', (event) => {
         projection.scale(baseScale * event.transform.k);
         redraw();
+    })
+    .on('end', () => {
+        if (climateCanvas && activeRasterLayerId) {
+            climateCanvas.style('opacity', '1');
+            setTimeout(() => {
+                if (activeRasterLayerId && rasterLayers[activeRasterLayerId].isVisible) {
+                    renderClimateRasterCanvas();
+                }
+            }, 100);
+        }
     });
 
 svg.call(drag).call(zoom);
@@ -392,10 +689,10 @@ svg.on('click', () => {
     autocompleteResults.html('');
 });
 const createClimateCasesLegend = () => {
-    clearLegend();
-    legendItems.append('div').attr('class', 'text-sm font-semibold mb-2 text-white').text('Climate Cases');
+    const group = legendItems.append('div').attr('id', 'cases-legend-group');
+    group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white mt-2').text('Climate Cases');
     const legendData = [1, 10, 100, 1000];
-    const legendItemsElements = legendItems.selectAll('.legend-item').data(legendData).join('div').attr('class', 'legend-item flex items-center mb-1');
+    const legendItemsElements = group.selectAll('.legend-item').data(legendData).join('div').attr('class', 'legend-item flex items-center mb-1');
     legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => caseColorScale(d));
     legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => `${d}${d === 1000 ? '+' : ''}`);
 };
@@ -410,14 +707,19 @@ function createElevationLegend() {
 
 function redraw() {
     countryPaths.selectAll('path').attr('d', pathGenerator);
+    
     if (isClimateLayerVisible && climateContourData) {
         climateLayer.selectAll('path').attr('d', pathGenerator);
     }
+    
     g.selectAll('.sphere, .graticule').attr('d', pathGenerator);
+    
     if (activeRasterLayerId && rasterLayers[activeRasterLayerId].isVisible) {
-        renderClimateRasterCanvas();
+        debouncedRenderClimateRaster();
     }
 }
+
+
 function toggleClimateLayer() {
     isClimateLayerVisible = !isClimateLayerVisible;
     if (climateContourData) {
@@ -446,7 +748,6 @@ function toggleClimateLayer() {
 }
 
 
-// --- flyTo function now builds and shows the data table modal ---
 function flyTo(countryName) {
     activeCountryName = countryName; 
     const targetCountry = countries.find(c => c.properties.name === countryName);
@@ -503,7 +804,6 @@ function flyTo(countryName) {
 }
 
 
-// --- INITIAL MAP DRAWING (Unchanged) ---
 d3.json(worldJsonUrl).then(topology => {
     countries = topojson.feature(topology, topology.objects.countries).features;
     countryPaths.selectAll('path').data(countries).join('path').attr('d', pathGenerator).attr('class', 'land non-interactive').style('fill', '#1b1b1b2c');
@@ -511,25 +811,15 @@ d3.json(worldJsonUrl).then(topology => {
     console.error("Error loading world geography:", error);
 });
 
-// --- NEW SVG DOWNLOAD FUNCTION ---
 async function downloadSVG() {
     try {
-        // 1. Fetch the external CSS stylesheet
-        const response = await fetch('style.css');
+        const response = await fetch('/src/style.css');
         const cssText = await response.text();
-
-        // 2. Get the SVG element's current HTML
         const svgNode = svg.node();
         let svgString = new XMLSerializer().serializeToString(svgNode);
-
-        // 3. Embed the CSS within a <style> tag inside the SVG
         const styleElement = `<style type="text/css"><![CDATA[${cssText}]]></style>`;
         svgString = svgString.replace('</svg>', `${styleElement}</svg>`);
-
-        // 4. Add the necessary XML declaration and doctype for a standalone file
         const fullSvg = `<?xml version="1.0" standalone="no"?>\r\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\r\n${svgString}`;
-
-        // 5. Create a blob and trigger the download
         const blob = new Blob([fullSvg], { type: 'image/svg+xml;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -539,7 +829,6 @@ async function downloadSVG() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-
     } catch (error) {
         console.error('Error downloading SVG:', error);
         alert('Could not download the map. See console for details.');
@@ -547,17 +836,31 @@ async function downloadSVG() {
 }
 
 
-// --- EVENT LISTENERS ---
-d3.select('#toggle-climate-raster-btn').on('click', () => toggleRasterLayer('emission'));
-d3.select('#toggle-climate-btn').on('click', () => toggleRasterLayer('temperature'));
+d3.select('#toggle-climate-raster-btn').on('click', toggleEmissionLayer);
+d3.select('#toggle-climate-btn').on('click', toggleTempLayer);
 d3.select('#toggle-cases-btn').on('click', toggleCasesLayer);
-yearSlider.on('input', () => { updateMap(); });
+d3.select('#toggle-burn-btn').on('click', toggleBurnLayer); 
+
+yearSlider.on('input', () => {
+    const selectedYear = yearSlider.property('value');
+    yearLabel.text(selectedYear);
+
+    if (isCasesLayerVisible) {
+        updateMap();
+    } 
+    if (activeRasterLayerId === 'burn') { 
+        loadAndRenderBurnData(selectedYear);
+    } else if (activeRasterLayerId === 'temperature') {
+        loadAndRenderTemperatureData(selectedYear);
+    } else if (activeRasterLayerId === 'emission') {
+        loadAndRenderEmissionData(selectedYear);
+    }
+});
 
 d3.select('#info-box-close').on('click', hideInfoBox);
-d3.select('#download-svg-btn').on('click', downloadSVG); // NEW: Attach listener
+d3.select('#download-svg-btn').on('click', downloadSVG);
 
 
-// --- SEARCH AND AUTOCOMPLETE FUNCTIONALITY (Unchanged) ---
 function searchAndFly() {
     const searchTerm = countrySearchInput.property('value').toLowerCase();
     if (!searchTerm) return;
@@ -593,10 +896,13 @@ countrySearchInput.on('keydown', (event) => {
     }
 });
 
-// --- FILTER PANEL FUNCTIONALITY ---
 d3.selectAll('.filter-group-header').on('click', function() {
     const header = d3.select(this);
-    header.classed('expanded', !header.classed('expanded'));
+    const content = d3.select(this.nextElementSibling);
+    const isExpanded = header.classed('expanded');
+    
+    header.classed('expanded', !isExpanded);
+    content.style('display', isExpanded ? 'none' : 'block');
 });
 d3.selectAll('input[name="status"]').on('change', function() {
     const checkbox = d3.select(this);

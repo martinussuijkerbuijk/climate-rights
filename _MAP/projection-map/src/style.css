@@ -183,7 +183,7 @@ body {
 
 /* Style for the selected country */
 .active-country {
-  fill: rgb(110, 1, 252) !important;
+  fill: rgba(110, 1, 252, 0.486) !important;
   stroke: #ffffff00; /* White stroke for the active country */
   stroke-width: 1.5px;
 }

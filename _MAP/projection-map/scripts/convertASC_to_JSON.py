@@ -6,7 +6,7 @@ def convert_asc_to_json(asc_filepath, json_filepath):
     Reads an ESRI ASCII Grid (.asc) file and converts it into a JSON format.
 
     The JSON output contains the header metadata and a single flat list
-    of all the grid cell values.
+    of all the grid cell values. NaN values will be replaced with 0.
     """
     header = {}
     values = []
@@ -20,15 +20,21 @@ def convert_asc_to_json(asc_filepath, json_filepath):
                 key = line[0].lower()
                 value = line[1]
 
-                # Convert numbers to int or float
-                if '.' in value:
-                    header[key] = float(value)
-                else:
+                # Convert numbers to int or float using a robust approach
+                try:
                     header[key] = int(value)
+                except ValueError:
+                    header[key] = float(value)
+
+            # Get the nodata value from the header
+            nodata_value = header.get('nodata_value')
 
             # 2. Read the remaining lines for the raster data
             for line in asc_file:
-                row_values = [float(val) for val in line.strip().split()]
+                row_values = [
+                    0 if float(val) == nodata_value else float(val)
+                    for val in line.strip().split()
+                ]
                 values.extend(row_values)
 
         # Combine header and values into one dictionary
