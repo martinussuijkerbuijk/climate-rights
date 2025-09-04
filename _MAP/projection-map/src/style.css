@@ -134,6 +134,21 @@ body {
   background-color: #000000; /* Dark blue-gray background */
 }
 
+/* MODIFIED: Main layout */
+main {
+  flex-grow: 1;
+  overflow: hidden;
+  position: relative; /* Context for absolute children */
+}
+
+#content-wrapper {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  position: relative; /* Context for detail panel */
+}
+
+
 /* Base style for all countries */
 .land {
   stroke: #ffffffb6; /* Mid-gray for borders */
@@ -183,7 +198,7 @@ body {
 
 /* Style for the selected country */
 .active-country {
-  fill: rgba(110, 1, 252, 0.486) !important;
+  fill: rgba(110, 1, 252, 0.411) !important;
   stroke: #ffffff00; /* White stroke for the active country */
   stroke-width: 1.5px;
 }
@@ -198,12 +213,6 @@ body {
   image-rendering: pixelated; /* Makes raster data look crisp */
 }
 
-/* Main content area is now a flex container */
-main {
-  display: flex;
-  flex-grow: 1;
-  overflow: hidden;
-}
 
 #map-container {
   position: relative;
@@ -408,15 +417,15 @@ main {
   cursor: pointer;
 }
 
-/* --- NEW / MODIFIED: Info Box Modal Styling --- */
+/* --- Info Box Modal Styling --- */
 #info-box {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 80vw;
+  width: 60vw;
   max-width: 900px;
-  height: 70vh;
+  height: 68vh;
   background-color: rgba(0, 0, 0, 0.9);
   border: 1px solid #fff;
   z-index: 1000;
@@ -464,7 +473,6 @@ main {
 
 #info-box-content th,
 #info-box-content td {
-  /* border: 1px solid #555; */
   padding: 0.5rem;
   text-align: left;
   font-size: 0.875rem;
@@ -477,5 +485,182 @@ main {
 
 #info-box-content tr:nth-child(even) {
   background-color: #1a1a1a;
+}
+
+/* --- Timeline Styles --- */
+#timeline-container {
+  position: absolute;
+  bottom: 0;
+  left: 300px; /* Start after the filter panel */
+  right: 0;
+  z-index: 10;
+  height: 160px;
+  background-color: rgba(0, 0, 0, 0.85); /* Semi-transparent */
+  border-top: 1px solid #fff;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  visibility: hidden; /* Hidden by default */
+}
+
+#timeline-svg {
+  width: 100%;
+  height: 100%;
+}
+
+#timeline-svg .axis path,
+#timeline-svg .axis line {
+  stroke: #fff;
+}
+
+#timeline-svg .axis text {
+  fill: #fff;
+  font-size: 12px;
+}
+
+#timeline-svg .timeline-dot {
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 0.5px;
+  cursor: pointer;
+  transition: fill 0.2s ease-in-out, r 0.2s ease-in-out;
+}
+
+#timeline-svg .timeline-dot:hover {
+  fill: rgb(110, 1, 252);
+  r: 5;
+}
+
+/* Timeline Detail Panel Styles */
+#timeline-detail-panel {
+  position: absolute; /* Take out of flex flow */
+  top: 0;
+  right: 0;
+  bottom: 160px; /* Stop at the top of the timeline */
+  z-index: 20; /* Ensure it's above the timeline */
+  width: 350px;
+  background-color: #000;
+  border-left: 1px solid #fff;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease-in-out;
+  transform: translateX(100%); /* Start off-screen */
+}
+
+#timeline-detail-panel.visible {
+    transform: translateX(0%); /* Slide in */
+}
+
+#timeline-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #fff;
+  flex-shrink: 0;
+}
+
+#timeline-detail-header h3 {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+}
+
+#timeline-detail-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#timeline-detail-content {
+  padding: 1rem;
+  flex-grow: 1;
+  overflow-y: hidden;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+#timeline-detail-content h4 {
+    font-weight: bold;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+#timeline-detail-content p {
+    margin-bottom: 1rem;
+}
+
+#timeline-detail-content strong {
+    color: #aaa;
+    margin-right: 0.5rem;
+}
+
+#timeline-detail-content .description {
+    font-style: italic;
+    color: #ccc;
+    max-height: 600px;
+    overflow-y: auto;
+    border-top: 1px solid #333;
+    padding-top: 1rem;
+    margin-top: 1rem;
+}
+
+/* --- NEW: Attractor Screen Styles --- */
+#attractor-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50; /* Above map, below panels */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.315);
+  pointer-events: none; /* Allows clicks/drags to go through */
+  opacity: 1;
+  transition: opacity 1s ease-in-out;
+}
+
+#attractor-screen.hidden {
+  opacity: 0;
+}
+
+#attractor-title {
+  font-size: 4rem;
+  font-weight: bold;
+  color: white;
+  text-shadow: 2px 2px 10px rgba(0,0,0,0.7);
+  /* MODIFIED: Make animation loop */
+  animation: fadeInScale 4s ease-in-out infinite alternate;
+}
+
+#attractor-prompt {
+  font-size: 1.25rem;
+  color: white;
+  margin-top: 1rem;
+  opacity: 0;
+  /* MODIFIED: Make animation loop and sync with title */
+  animation: fadeIn 4s 1s ease-in-out infinite alternate;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0.1; }
+  to { opacity: 1; }
 }
 

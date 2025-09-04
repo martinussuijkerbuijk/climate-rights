@@ -19,6 +19,10 @@ let windAnimator = null;
 let isWindLayerVisible = false;
 let windDataCache = null;
 
+// NEW: State for attractor loop
+let userHasInteracted = false;
+let rotationTimer = null;
+
 
 // --- DOM Selections ---
 const mapContainer = d3.select('#map-container');
@@ -32,6 +36,15 @@ const yearLabel = d3.select('#year-label');
 const countrySearchInput = d3.select('#country-search-input');
 const countrySearchBtn = d3.select('#country-search-btn');
 const autocompleteResults = d3.select('#autocomplete-results');
+
+// NEW: DOM Selections for Timeline
+const timelineContainer = d3.select('#timeline-container');
+const timelineSvg = d3.select('#timeline-svg');
+const timelineDetailPanel = d3.select('#timeline-detail-panel');
+const timelineDetailContent = d3.select('#timeline-detail-content');
+const timelineDetailClose = d3.select('#timeline-detail-close');
+const attractorScreen = d3.select('#attractor-screen'); // NEW
+
 
 // Add these variables at the top with other state variables
 let renderTimeout = null;
@@ -212,6 +225,7 @@ function loadAndRenderEmissionData(year) {
 }
 
 function toggleEmissionLayer() {
+    stopAttractorLoop();
     const layer = rasterLayers.emission;
     
     if (!layer.isVisible) {
@@ -251,6 +265,7 @@ function toggleEmissionLayer() {
         }
         createAndUpdateLegends();
     }
+    updateLegendVisibility();
 }
 
 
@@ -281,6 +296,7 @@ function loadAndRenderTemperatureData(year) {
 }
 
 function toggleTempLayer() {
+    stopAttractorLoop();
     const layer = rasterLayers.temperature;
     
     if (!layer.isVisible) {
@@ -320,6 +336,7 @@ function toggleTempLayer() {
         }
         createAndUpdateLegends();
     }
+    updateLegendVisibility();
 }
 
 
@@ -353,6 +370,7 @@ function loadAndRenderBurnData(year) {
 }
 
 function toggleBurnLayer() {
+    stopAttractorLoop();
     const layer = rasterLayers.burn;
 
     if (!layer.isVisible) {
@@ -392,6 +410,7 @@ function toggleBurnLayer() {
         }
         createAndUpdateLegends();
     }
+    updateLegendVisibility();
 }
 
 
@@ -415,8 +434,6 @@ const svg = mapContainer.append('svg').attr('width', '100%').attr('height', '100
 const g = svg.append('g');
 const projection = d3.geoAzimuthalEquidistant().scale(baseScale).translate([width / 2, height / 2]).clipAngle(180 - 1e-3);
 
-// --- INITIALIZE THE WIND ANIMATOR ---
-// It's good practice to do this after the page is loaded
 d3.select(window).on('load', () => {
     windAnimator = new WindAnimator(projection, width, height);
 });
@@ -444,17 +461,25 @@ function hideInfoBox() {
            .classed('opacity-0', true)
            .classed('invisible', true)
            .style('pointer-events', 'none'); 
+    if (isCasesLayerVisible) {
+        updateTimeline(allCasesData);
+    }
 }
 function hideTooltip() { tooltip.classed('opacity-100', false).classed('opacity-0', true).classed('invisible', true); }
 function clearLegend() { legendItems.selectAll('*').remove(); }
 
-// --- CREATE THE TOGGLE FUNCTION ---
+function updateLegendVisibility() {
+    const legend = d3.select('#legend');
+    const isAnyLayerVisible = isCasesLayerVisible || activeRasterLayerId || isWindLayerVisible;
+    legend.style('visibility', isAnyLayerVisible ? 'visible' : 'hidden');
+}
+
 function toggleWindLayer() {
+    stopAttractorLoop();
     isWindLayerVisible = !isWindLayerVisible;
     d3.select('#toggle-wind-btn').classed('active', isWindLayerVisible);
 
     if (isWindLayerVisible) {
-        // Hide other layers for clarity
         if (rasterLayers.temperature.isVisible) toggleTempLayer();
         if (rasterLayers.emission.isVisible) toggleEmissionLayer();
         if (rasterLayers.burn.isVisible) toggleBurnLayer();
@@ -466,11 +491,8 @@ function toggleWindLayer() {
         } else {
             legendItems.html(`<div class="text-white text-sm">Loading wind data...</div>`);
             d3.json(windDataUrl).then(data => {
-                // Simply store the raw data. The wind.js module will handle the rest.
                 windDataCache = data; 
-                
                 windAnimator.start(windDataCache);
-                createAndUpdateLegends(); // Clear the loading message
             }).catch(error => {
                 console.error("Error loading wind data:", error);
                 legendItems.html(`<div class="text-white text-sm">Could not load wind data.</div>`);
@@ -479,7 +501,56 @@ function toggleWindLayer() {
     } else {
         windAnimator.stop();
     }
+    updateLegendVisibility();
 }
+
+function updateTimeline(caseData) {
+    timelineSvg.selectAll('*').remove();
+    const timelineHeight = 160;
+    const timelineWidth = timelineContainer.node().getBoundingClientRect().width;
+    const margin = { top: 20, right: 40, bottom: 30, left: 40 };
+    const width = timelineWidth - margin.left - margin.right;
+    const height = timelineHeight - margin.top - margin.bottom;
+
+    const svg = timelineSvg
+        .append('g')
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+    
+    const x = d3.scaleLinear()
+        .domain([2005, 2025])
+        .range([0, width]);
+
+    const xAxis = d3.axisBottom(x).ticks(10).tickFormat(d3.format("d"));
+
+    svg.append('g')
+        .attr('class', 'axis')
+        .attr('transform', `translate(0, ${height})`)
+        .call(xAxis);
+
+    svg.selectAll('.timeline-dot')
+        .data(caseData.filter(d => d['Filing Year'] >= 2005 && d['Filing Year'] <= 2025))
+        .join('circle')
+        .attr('class', 'timeline-dot')
+        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50)) 
+        .attr('cy', height / 2 + (Math.random() * 40 - 20))
+        .attr('r', 3)
+        .on('click', (event, d) => {
+            d3.select('main').classed('detail-panel-visible', true);
+            timelineDetailPanel.classed('visible', true);
+            timelineDetailContent.html(`
+                <h4>${d['Case Name']}</h4>
+                <p><strong>ID:</strong> ${d.ID}</p>
+                <p><strong>Jurisdiction:</strong> ${d.Jurisdictions}</p>
+                <p><strong>Status:</strong> ${d.Status}</p>
+                <div class="description">
+                    <strong>Description:</strong>startAttractorLoop
+                    <p>${d.Description || 'Not available.'}</p>
+                </div>
+            `);
+            // flyTo(d.Jurisdictions);
+        });
+}
+
 
 function renderInfoBoxContent() {
     if (!activeCountryName) {
@@ -608,18 +679,21 @@ function resetCountryStyles() {
     hideTooltip();
 }
 function toggleCasesLayer() {
+    stopAttractorLoop();
     d3.select('#toggle-cases-btn').classed('no-animation', true);
     isCasesLayerVisible = !isCasesLayerVisible;
     d3.select('#toggle-cases-btn').classed('active', isCasesLayerVisible);
 
     if (isCasesLayerVisible) {
         sliderContainer.style('visibility', 'visible');
+        timelineContainer.style('visibility', 'visible');
         if (areCasesLoaded) {
             if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission') {
                 const years = allCasesData.map(d => +d['Filing Year']);
                 yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
             }
             updateMap();
+            createAndUpdateLegends();
         } else {
             legendItems.html('<div class="text-white text-sm">Loading case data...</div>');
             d3.csv(caseDataUrl).then(data => {
@@ -635,6 +709,8 @@ function toggleCasesLayer() {
                     yearSlider.attr('min', minYear).attr('max', maxYear).attr('value', maxYear);
                 }
                 updateMap();
+                updateTimeline(allCasesData);
+                createAndUpdateLegends(); 
             }).catch(error => {
                 console.error("Error loading case data:", error);
                 isCasesLayerVisible = false;
@@ -642,6 +718,8 @@ function toggleCasesLayer() {
         }
     } else {
         resetCountryStyles();
+        timelineContainer.style('visibility', 'hidden');
+        timelineDetailPanel.classed('visible', false);
         if (!activeRasterLayerId) {
             sliderContainer.style('visibility', 'hidden');
         } else {
@@ -652,8 +730,9 @@ function toggleCasesLayer() {
                 yearLabel.text(yearSlider.property('value'));
              }
         }
+        createAndUpdateLegends();
     }
-    createAndUpdateLegends();
+    updateLegendVisibility();
 }
 
 function createAndUpdateLegends() {
@@ -682,11 +761,12 @@ function destroyClimateLayer() {
 }
 const drag = d3.drag()
     .on('start', () => { 
+        stopAttractorLoop();
         hideInfoBox(); 
         hideTooltip();
         destroyClimateLayer();
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '0.3');
-        if (isWindLayerVisible) windAnimator.stop(); // Stop animation during drag
+        if (isWindLayerVisible) windAnimator.stop();
     })
     .on('drag', (event) => {
         const currentRotation = projection.rotate();
@@ -698,12 +778,13 @@ const drag = d3.drag()
     .on('end', () => {
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '1');
         if (isWindLayerVisible && windDataCache) {
-             windAnimator.updateProjection(projection); // Update with new projection
-             windAnimator.start(windDataCache);      // Restart animation
+             windAnimator.updateProjection(projection); 
+             windAnimator.start(windDataCache);
         }
     });
 
 const zoomStartHandler = () => {
+    stopAttractorLoop();
     hideInfoBox();
     hideTooltip();
     destroyClimateLayer();
@@ -712,6 +793,7 @@ const zoomStartHandler = () => {
 const zoom = d3.zoom()
     .scaleExtent([0.75, 15])
     .on('start', () => {
+        stopAttractorLoop();
         hideInfoBox();
         hideTooltip();
         destroyClimateLayer();
@@ -803,10 +885,8 @@ function toggleClimateLayer() {
 
 
 function flyTo(countryName) {
-    // If cases aren't visible, turn them on first.
     if (!isCasesLayerVisible) {
         d3.select('#toggle-cases-btn').dispatch('click');
-        // Use a short delay to allow the data loading to begin and the state to update.
         setTimeout(() => flyTo(countryName), 100);
         return;
     }
@@ -819,7 +899,6 @@ function flyTo(countryName) {
         return;
     }
 
-    // The key check: only reset colors if the scale is ready.
     if (typeof caseColorScale === 'function') {
         countryPaths.selectAll('.active-country')
           .classed('active-country', false)
@@ -832,6 +911,10 @@ function flyTo(countryName) {
       .filter(d => d.properties.name === countryName)
       .classed('active-country', true)
       .style('fill', null);
+
+    // Filter cases for the selected country and update the timeline
+    const countryCases = allCasesData.filter(d => d.Jurisdictions === countryName);
+    updateTimeline(countryCases);
 
     const centroid = d3.geoCentroid(targetCountry);
     const targetRotation = [-centroid[0], -centroid[1]];
@@ -874,6 +957,7 @@ function flyTo(countryName) {
 d3.json(worldJsonUrl).then(topology => {
     countries = topojson.feature(topology, topology.objects.countries).features;
     countryPaths.selectAll('path').data(countries).join('path').attr('d', pathGenerator).attr('class', 'land non-interactive').style('fill', '#1b1b1b2c');
+    startAttractorLoop(); // Start the animation
 }).catch(error => {
     console.error("Error loading world geography:", error);
 });
@@ -955,6 +1039,25 @@ function renderAutocompleteResults(countryList) {
                 autocompleteResults.html('');
             });
     });
+}
+
+// NEW: Attractor loop functions
+function startAttractorLoop() {
+    if (userHasInteracted) return;
+
+    rotationTimer = d3.timer(elapsed => {
+        const rotate = projection.rotate();
+        const speed = 0.1; // Degrees per millisecond
+        projection.rotate([rotate[0] + speed , rotate[1], rotate[2]]);
+        redraw();
+    });
+}
+
+function stopAttractorLoop() {
+    if (userHasInteracted) return; // Only run once
+    userHasInteracted = true;
+    if (rotationTimer) rotationTimer.stop();
+    attractorScreen.classed('hidden', true);
 }
 
 
@@ -1040,6 +1143,13 @@ function setupSearchInteractions() {
         });
     }
 }
+
+// NEW: Close timeline detail panel
+timelineDetailClose.on('click', () => {
+    d3.select('main').classed('detail-panel-visible', false);
+    timelineDetailPanel.classed('visible', false);
+});
+
 
 // Near the end of main.js with other listeners
 d3.select('#toggle-wind-btn').on('click', toggleWindLayer);
