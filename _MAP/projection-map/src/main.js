@@ -1,14 +1,24 @@
 import * as d3 from 'https://cdn.skypack.dev/d3@7';
 import * as topojson from 'https://cdn.skypack.dev/topojson-client@3';
 import 'https://cdn.skypack.dev/d3-geo-projection@4';
+import { WindAnimator } from './wind.js'; // <-- IMPORT YOUR NEW MODULE
 
 // --- Map Configuration ---
+let keyboard = false;
 const width = 2010;
 const height = 1280;
 const worldJsonUrl = 'https://unpkg.com/world-atlas@2/countries-110m.json';
 const caseDataUrl = 'CASES_COMBINED_status.csv'; 
 const climateContoursUrl = 'sea_level_contours_qgis.topojson'; 
 const baseScale = 200; 
+const windDataUrl = 'current-wind-surface-level-gfs-1.0.json'
+
+
+// --- Add new state variables ---
+let windAnimator = null;
+let isWindLayerVisible = false;
+let windDataCache = null;
+
 
 // --- DOM Selections ---
 const mapContainer = d3.select('#map-container');
@@ -30,7 +40,6 @@ let lastRenderTime = 0;
 const RENDER_DEBOUNCE_MS = 150; 
 const MIN_RENDER_INTERVAL = 100; 
 
-
 // --- RASTER LAYER HANDLING ---
 const rasterLayers = {
     emission: {
@@ -46,7 +55,7 @@ const rasterLayers = {
         id: 'temperature',
         title: 'Temperature Anomaly',
         domain: [-75., -52.5, -29.8, -7.2, 15.4, 38., 61.],
-        colors: ['#34258fff', '#681a72ff', '#9d9e48ff', '#ccb21fff', '#f0520eff', '#eb1f00ff', '#ff0000ff'],
+        colors: ['#34258fff', '#681a72ff', '#9d9e48ff', '#ccb21fff', '#e09524ff', '#eb1f00ff', '#570000ff'],
         data: null,
         isVisible: false,
         dataCache: {}
@@ -176,7 +185,6 @@ function createClimateRasterLegend(layer, colorScale) {
     }
 }
 
-// NEW: Function to load and render emission data by year
 function loadAndRenderEmissionData(year) {
     const layer = rasterLayers.emission;
     const cachedData = layer.dataCache[year];
@@ -188,7 +196,7 @@ function loadAndRenderEmissionData(year) {
     }
 
     legendItems.html(`<div class="text-white text-sm">Loading emission data for ${year}...</div>`);
-    const dataUrl = `emission/NO2_${year}-06-01.json`; // Assuming filename structure
+    const dataUrl = `emission/NO2_${year}-06-01.json`;
 
     d3.text(dataUrl).then(text => {
         const cleanedText = text.replace(/NaN/g, 'null');
@@ -203,7 +211,6 @@ function loadAndRenderEmissionData(year) {
     });
 }
 
-// NEW: Dedicated toggle function for the Emission layer
 function toggleEmissionLayer() {
     const layer = rasterLayers.emission;
     
@@ -221,7 +228,7 @@ function toggleEmissionLayer() {
         activeCategoryFilters.add('Emission');
         if (isCasesLayerVisible) updateMap();
         
-        const yearRange = { min: 2015, max: 2025, default: 2020 };
+        const yearRange = { min: 2015, max: 2025, default: 2019 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
         sliderContainer.style('visibility', 'visible');
@@ -286,11 +293,11 @@ function toggleTempLayer() {
 
     if (layer.isVisible) {
         activeRasterLayerId = 'temperature';
-        d3.select('#filter-cat2').property('checked', true);
-        activeCategoryFilters.add('Emission');
+        // d3.select('#filter-cat2').property('checked', true);
+        // activeCategoryFilters.add('Emission');
         if (isCasesLayerVisible) updateMap();
         
-        const yearRange = { min: 2015, max: 2025, default: 2021 };
+        const yearRange = { min: 2015, max: 2025, default: 2025 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
         sliderContainer.style('visibility', 'visible');
@@ -407,6 +414,13 @@ let seaLevelColorScale = null;
 const svg = mapContainer.append('svg').attr('width', '100%').attr('height', '100%').attr('viewBox', `0 0 ${width} ${height}`).attr('class', 'globe');
 const g = svg.append('g');
 const projection = d3.geoAzimuthalEquidistant().scale(baseScale).translate([width / 2, height / 2]).clipAngle(180 - 1e-3);
+
+// --- INITIALIZE THE WIND ANIMATOR ---
+// It's good practice to do this after the page is loaded
+d3.select(window).on('load', () => {
+    windAnimator = new WindAnimator(projection, width, height);
+});
+
 const pathGenerator = d3.geoPath(projection);
 g.append('path').datum({ type: 'Sphere' }).attr('class', 'sphere').attr('d', pathGenerator);
 g.append('path').datum(d3.geoGraticule10()).attr('class', 'graticule').attr('d', pathGenerator);
@@ -434,6 +448,38 @@ function hideInfoBox() {
 function hideTooltip() { tooltip.classed('opacity-100', false).classed('opacity-0', true).classed('invisible', true); }
 function clearLegend() { legendItems.selectAll('*').remove(); }
 
+// --- CREATE THE TOGGLE FUNCTION ---
+function toggleWindLayer() {
+    isWindLayerVisible = !isWindLayerVisible;
+    d3.select('#toggle-wind-btn').classed('active', isWindLayerVisible);
+
+    if (isWindLayerVisible) {
+        // Hide other layers for clarity
+        if (rasterLayers.temperature.isVisible) toggleTempLayer();
+        if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+        if (rasterLayers.burn.isVisible) toggleBurnLayer();
+        
+        sliderContainer.style('visibility', 'hidden');
+
+        if (windDataCache) {
+            windAnimator.start(windDataCache);
+        } else {
+            legendItems.html(`<div class="text-white text-sm">Loading wind data...</div>`);
+            d3.json(windDataUrl).then(data => {
+                // Simply store the raw data. The wind.js module will handle the rest.
+                windDataCache = data; 
+                
+                windAnimator.start(windDataCache);
+                createAndUpdateLegends(); // Clear the loading message
+            }).catch(error => {
+                console.error("Error loading wind data:", error);
+                legendItems.html(`<div class="text-white text-sm">Could not load wind data.</div>`);
+            });
+        }
+    } else {
+        windAnimator.stop();
+    }
+}
 
 function renderInfoBoxContent() {
     if (!activeCountryName) {
@@ -569,7 +615,7 @@ function toggleCasesLayer() {
     if (isCasesLayerVisible) {
         sliderContainer.style('visibility', 'visible');
         if (areCasesLoaded) {
-            if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature') {
+            if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission') {
                 const years = allCasesData.map(d => +d['Filing Year']);
                 yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
             }
@@ -582,7 +628,7 @@ function toggleCasesLayer() {
                 const maxCases = d3.max(d3.rollup(allCasesData, v => v.length, d => d.Jurisdictions).values());
                 caseColorScale = d3.scaleLog().domain([1, maxCases]).range(['#ff7c7c8c', '#eb0000c7']);
                 
-                if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature') {
+                if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission') {
                     const years = allCasesData.map(d => +d['Filing Year']);
                     const minYear = d3.min(years);
                     const maxYear = d3.max(years);
@@ -601,9 +647,7 @@ function toggleCasesLayer() {
         } else {
             const layer = rasterLayers[activeRasterLayerId];
              if(layer.dataCache) {
-                const yearRange = activeRasterLayerId === 'burn' 
-                    ? { min: 2015, max: 2025 } 
-                    : { min: 2015, max: 2025 };
+                const yearRange = { min: 2015, max: 2025 };
                 yearSlider.attr('min', yearRange.min).attr('max', yearRange.max);
                 yearLabel.text(yearSlider.property('value'));
              }
@@ -642,6 +686,7 @@ const drag = d3.drag()
         hideTooltip();
         destroyClimateLayer();
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '0.3');
+        if (isWindLayerVisible) windAnimator.stop(); // Stop animation during drag
     })
     .on('drag', (event) => {
         const currentRotation = projection.rotate();
@@ -652,6 +697,10 @@ const drag = d3.drag()
     })
     .on('end', () => {
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '1');
+        if (isWindLayerVisible && windDataCache) {
+             windAnimator.updateProjection(projection); // Update with new projection
+             windAnimator.start(windDataCache);      // Restart animation
+        }
     });
 
 const zoomStartHandler = () => {
@@ -667,6 +716,7 @@ const zoom = d3.zoom()
         hideTooltip();
         destroyClimateLayer();
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '0.3');
+        if (isWindLayerVisible) windAnimator.stop();
     })
     .on('zoom', (event) => {
         projection.scale(baseScale * event.transform.k);
@@ -680,6 +730,10 @@ const zoom = d3.zoom()
                     renderClimateRasterCanvas();
                 }
             }, 100);
+        }
+        if (isWindLayerVisible && windDataCache) {
+            windAnimator.updateProjection(projection);
+            windAnimator.start(windDataCache);
         }
     });
 
@@ -749,6 +803,14 @@ function toggleClimateLayer() {
 
 
 function flyTo(countryName) {
+    // If cases aren't visible, turn them on first.
+    if (!isCasesLayerVisible) {
+        d3.select('#toggle-cases-btn').dispatch('click');
+        // Use a short delay to allow the data loading to begin and the state to update.
+        setTimeout(() => flyTo(countryName), 100);
+        return;
+    }
+
     activeCountryName = countryName; 
     const targetCountry = countries.find(c => c.properties.name === countryName);
     
@@ -757,9 +819,14 @@ function flyTo(countryName) {
         return;
     }
 
-    countryPaths.selectAll('.active-country')
-      .classed('active-country', false)
-      .style('fill', d => caseColorScale(d.properties.caseCount));
+    // The key check: only reset colors if the scale is ready.
+    if (typeof caseColorScale === 'function') {
+        countryPaths.selectAll('.active-country')
+          .classed('active-country', false)
+          .style('fill', d => caseColorScale(d.properties.caseCount));
+    } else {
+        countryPaths.selectAll('.active-country').classed('active-country', false);
+    }
 
     countryPaths.selectAll('path')
       .filter(d => d.properties.name === countryName)
@@ -871,30 +938,28 @@ function searchAndFly() {
         autocompleteResults.html('');
     }
 }
-countrySearchInput.on('input', (event) => {
-    const inputText = event.target.value.toLowerCase();
-    autocompleteResults.html('');
-    if (inputText.length > 0) {
-        const matched = countries.filter(c => c.properties.name.toLowerCase().startsWith(inputText));
-        matched.forEach(country => {
-            autocompleteResults.append('div')
-                .attr('class', 'autocomplete-item')
-                .text(country.properties.name)
-                .on('click', () => {
-                    flyTo(country.properties.name);
-                    countrySearchInput.property('value', '');
-                    autocompleteResults.html('');
-                });
-        });
-    }
-});
+// Helper function to render the list of countries
+function renderAutocompleteResults(countryList) {
+    autocompleteResults.html(''); // Clear previous results
+    
+    // Sort the list alphabetically for better usability
+    countryList.sort((a, b) => a.properties.name.localeCompare(b.properties.name));
+
+    countryList.forEach(country => {
+        autocompleteResults.append('div')
+            .attr('class', 'autocomplete-item')
+            .text(country.properties.name)
+            .on('click', () => {
+                flyTo(country.properties.name);
+                countrySearchInput.property('value', '');
+                autocompleteResults.html('');
+            });
+    });
+}
+
+
+// The search button's main function remains the same
 countrySearchBtn.on('click', searchAndFly);
-countrySearchInput.on('keydown', (event) => {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        searchAndFly();
-    }
-});
 
 d3.selectAll('.filter-group-header').on('click', function() {
     const header = d3.select(this);
@@ -931,4 +996,64 @@ d3.selectAll('input[name="category"]').on('change', function() {
     
     updateMap();
 });
+
+// --- Global Control for Exhibition Mode ---
+
+// This function contains the logic to set up search listeners based on the 'keyboard' flag.
+function setupSearchInteractions() {
+    // Clear any previous listeners to prevent them from stacking up
+    countrySearchInput.on('input', null).on('keydown', null).on('click', null);
+
+    if (keyboard) {
+        // --- MODE 1: KEYBOARD AVAILABLE ---
+        countrySearchInput.attr('readonly', null); // Ensure input is not read-only
+        
+        countrySearchInput.on('input', (event) => {
+            const inputText = event.target.value.toLowerCase();
+            if (inputText.length > 0) {
+                const matched = countries.filter(c => c.properties.name.toLowerCase().startsWith(inputText));
+                renderAutocompleteResults(matched);
+            } else {
+                autocompleteResults.html('');
+            }
+        });
+
+        countrySearchInput.on('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchAndFly();
+            }
+        });
+
+    } else {
+        // --- MODE 2: NO KEYBOARD (Exhibition Mode) ---
+        countrySearchInput.attr('readonly', true); // Make input read-only
+
+        countrySearchInput.on('click', (event) => {
+            event.stopPropagation();
+            const isListVisible = autocompleteResults.node().hasChildNodes();
+            if (isListVisible) {
+                 autocompleteResults.html('');
+            } else {
+                 renderAutocompleteResults(countries);
+            }
+        });
+    }
+}
+
+// Near the end of main.js with other listeners
+d3.select('#toggle-wind-btn').on('click', toggleWindLayer);
+
+// Expose a function to the global window object to control the mode from the console
+window.setKeyboardMode = function(hasKeyboard) {
+    keyboard = !!hasKeyboard; // Ensure it's a true/false value
+    console.log(`Keyboard mode has been set to: ${keyboard}`);
+    setupSearchInteractions(); // Re-apply the correct event listeners
+    // You might want to clear the search results when switching modes
+    autocompleteResults.html('');
+    countrySearchInput.property('value', '');
+};
+
+// Initial setup when the script loads for the first time
+setupSearchInteractions();
 
