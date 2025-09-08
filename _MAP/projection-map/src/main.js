@@ -81,6 +81,15 @@ const rasterLayers = {
         data: null,
         isVisible: false,
         dataCache: {}
+    },
+    seaLevel: {
+        id: 'seaLevel',
+        title: 'Sea Level Anomaly',
+        domain: [-1.5, - 1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1., 1.25],
+        colors: ['#053061', '#2166ac', '#4393c3', '#c197f8ff', '#d650ffff', '#e2abd6ff', '#9b9b9bff', '#f4a582', '#d3887cff', '#d15353ff','#f14e61ff', '#ff001eff'],
+        data: null,
+        isVisible: false,
+        dataCache: {}
     }
 };
 let activeRasterLayerId = null; 
@@ -141,26 +150,35 @@ function renderClimateRasterCanvas() {
     const scale = projection.scale();
     const cellSizePixels = Math.max(0.5, Math.min(8, scale / 100));
     const bounds = { left: -cellSizePixels, right: width + cellSizePixels, top: -cellSizePixels, bottom: height + cellSizePixels };
-    const skipFactor = scale < 300 ? Math.max(1, Math.floor(500 / scale)) : 1; 
+    const skipFactor = scale < 300 ? Math.max(1, Math.floor(500 / scale)) : 1;
     climateCanvasContext.globalAlpha = 0.7;
     for (let row = 0; row < nrows; row += skipFactor) {
         for (let col = 0; col < ncols; col += skipFactor) {
             const index = row * ncols + col;
             const value = dataArray[index];
-            if (value === null || value === undefined || isNaN(value) || (activeRasterLayerId !== 'temperature' && value <= 0) ) continue;
+            if (value === null || value === undefined || isNaN(value) || (activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'seaLevel' && value <= 0)) continue;
             const lon = xllcorner + col * cellsize;
             const lat = yllcorner + ((nrows - row - 0.5) * cellsize);
             const projected = projection([lon, lat]);
             if (!projected) continue;
             const [x, y] = projected;
             if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue;
+            
             climateCanvasContext.fillStyle = colorScale(value);
-            climateCanvasContext.fillRect(
-                Math.round(x - cellSizePixels / 2), 
-                Math.round(y - cellSizePixels / 2), 
-                Math.max(1, Math.round(cellSizePixels * skipFactor)), 
-                Math.max(1, Math.round(cellSizePixels * skipFactor))
-            );
+
+            if (activeRasterLayerId === 'burn') {
+                climateCanvasContext.beginPath();
+                const radius = Math.max(1, (cellSizePixels / 2) * skipFactor);
+                climateCanvasContext.arc(Math.round(x), Math.round(y), radius, 0, 2 * Math.PI);
+                climateCanvasContext.fill();
+            } else {
+                climateCanvasContext.fillRect(
+                    Math.round(x - cellSizePixels / 2),
+                    Math.round(y - cellSizePixels / 2),
+                    Math.max(1, Math.round(cellSizePixels * skipFactor)),
+                    Math.max(1, Math.round(cellSizePixels * skipFactor))
+                );
+            }
         }
     }
     isRendering = false;
@@ -209,7 +227,7 @@ function loadAndRenderEmissionData(year) {
     }
 
     legendItems.html(`<div class="text-white text-sm">Loading emission data for ${year}...</div>`);
-    const dataUrl = `emission/NO2_${year}-06-01.json`;
+    const dataUrl = `emission/tropospheric_NO2_${year}-06-01.json`;
 
     d3.text(dataUrl).then(text => {
         const cleanedText = text.replace(/NaN/g, 'null');
@@ -231,6 +249,7 @@ function toggleEmissionLayer() {
     if (!layer.isVisible) {
         if (rasterLayers.burn.isVisible) toggleBurnLayer();
         if (rasterLayers.temperature.isVisible) toggleTempLayer();
+        if (rasterLayers.seaLevel.isVisible) toggleSeaLevelLayer();
     }
 
     layer.isVisible = !layer.isVisible;
@@ -242,7 +261,7 @@ function toggleEmissionLayer() {
         activeCategoryFilters.add('Emission');
         if (isCasesLayerVisible) updateMap();
         
-        const yearRange = { min: 2015, max: 2025, default: 2019 };
+        const yearRange = { min: 2018, max: 2025, default: 2019 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
         sliderContainer.style('visibility', 'visible');
@@ -302,6 +321,7 @@ function toggleTempLayer() {
     if (!layer.isVisible) {
         if (rasterLayers.burn.isVisible) toggleBurnLayer();
         if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+        if (rasterLayers.seaLevel.isVisible) toggleSeaLevelLayer();
     }
 
     layer.isVisible = !layer.isVisible;
@@ -376,6 +396,7 @@ function toggleBurnLayer() {
     if (!layer.isVisible) {
         if (rasterLayers.temperature.isVisible) toggleTempLayer();
         if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+        if (rasterLayers.seaLevel.isVisible) toggleSeaLevelLayer();
     }
 
     layer.isVisible = !layer.isVisible;
@@ -398,6 +419,79 @@ function toggleBurnLayer() {
         activeRasterLayerId = null;
         d3.select('#filter-cat1').property('checked', false);
         activeCategoryFilters.delete('Fire');
+        if (isCasesLayerVisible) updateMap();
+        
+        if (climateCanvas) climateCanvas.style('visibility', 'hidden');
+        if (isCasesLayerVisible) {
+            const years = allCasesData.map(d => +d['Filing Year']);
+            yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
+            yearLabel.text(yearSlider.property('value'));
+        } else {
+            sliderContainer.style('visibility', 'hidden');
+        }
+        createAndUpdateLegends();
+    }
+    updateLegendVisibility();
+}
+
+function loadAndRenderSeaLevelData(year) {
+    const layer = rasterLayers.seaLevel;
+    const cachedData = layer.dataCache[year];
+
+    if (cachedData) {
+        layer.data = cachedData;
+        renderClimateRasterCanvas();
+        return;
+    }
+
+    legendItems.html(`<div class="text-white text-sm">Loading sea level data for ${year}...</div>`);
+    // NOTE: This URL is a placeholder based on the structure of other data URLs.
+    // You may need to replace `sea_level/sea_level_anomaly_${year}-01-01.json` with the correct path.
+    const dataUrl = `seaLevel/sea_level_anomaly_${year}-07-15.json`; 
+
+    d3.text(dataUrl).then(text => {
+        const cleanedText = text.replace(/NaN/g, 'null');
+        const data = JSON.parse(cleanedText);
+        
+        layer.dataCache[year] = data;
+        layer.data = data;
+        renderClimateRasterCanvas();
+    }).catch(error => {
+        console.error(`Error loading or parsing sea level data for ${year}:`, error);
+        legendItems.html(`<div class="text-white text-sm">Data not available for ${year}.</div>`);
+        if (climateCanvasContext) {
+            climateCanvasContext.clearRect(0, 0, width, height);
+        }
+    });
+}
+
+function toggleSeaLevelLayer() {
+    stopAttractorLoop();
+    const layer = rasterLayers.seaLevel;
+
+    // Deactivate other layers if this one is being activated
+    if (!layer.isVisible) {
+        if (rasterLayers.temperature.isVisible) toggleTempLayer();
+        if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+        if (rasterLayers.burn.isVisible) toggleBurnLayer();
+    }
+
+    layer.isVisible = !layer.isVisible;
+    d3.select('#toggle-sea-level-btn').classed('active', layer.isVisible);
+
+    if (layer.isVisible) {
+        activeRasterLayerId = 'seaLevel';
+        if (isCasesLayerVisible) updateMap();
+        
+        const yearRange = { min: 2015, max: 2023, default: 2023 };
+        yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
+        yearLabel.text(yearRange.default);
+        sliderContainer.style('visibility', 'visible');
+        if (!climateCanvas) createClimateCanvas();
+        climateCanvas.style('visibility', 'visible');
+        loadAndRenderSeaLevelData(yearRange.default);
+    } else {
+        activeRasterLayerId = null;
         if (isCasesLayerVisible) updateMap();
         
         if (climateCanvas) climateCanvas.style('visibility', 'hidden');
@@ -480,9 +574,10 @@ function toggleWindLayer() {
     d3.select('#toggle-wind-btn').classed('active', isWindLayerVisible);
 
     if (isWindLayerVisible) {
-        if (rasterLayers.temperature.isVisible) toggleTempLayer();
-        if (rasterLayers.emission.isVisible) toggleEmissionLayer();
-        if (rasterLayers.burn.isVisible) toggleBurnLayer();
+        // if (rasterLayers.temperature.isVisible) toggleTempLayer();
+        // if (rasterLayers.emission.isVisible) toggleEmissionLayer();
+        // if (rasterLayers.burn.isVisible) toggleBurnLayer();
+        // if (rasterLayers.seaLevel.isVisible) toggleSeaLevelLayer();
         
         sliderContainer.style('visibility', 'hidden');
 
@@ -517,7 +612,7 @@ function updateTimeline(caseData) {
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
     
     const x = d3.scaleLinear()
-        .domain([2005, 2025])
+        .domain([1986, 2025])
         .range([0, width]);
 
     const xAxis = d3.axisBottom(x).ticks(10).tickFormat(d3.format("d"));
@@ -528,7 +623,7 @@ function updateTimeline(caseData) {
         .call(xAxis);
 
     svg.selectAll('.timeline-dot')
-        .data(caseData.filter(d => d['Filing Year'] >= 2005 && d['Filing Year'] <= 2025))
+        .data(caseData.filter(d => d['Filing Year'] >= 1986 && d['Filing Year'] <= 2025))
         .join('circle')
         .attr('class', 'timeline-dot')
         .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50)) 
@@ -543,7 +638,6 @@ function updateTimeline(caseData) {
                 <p><strong>Jurisdiction:</strong> ${d.Jurisdictions}</p>
                 <p><strong>Status:</strong> ${d.Status}</p>
                 <div class="description">
-                    <strong>Description:</strong>startAttractorLoop
                     <p>${d.Description || 'Not available.'}</p>
                 </div>
             `);
@@ -588,20 +682,20 @@ function renderInfoBoxContent() {
         countryCases.forEach(caseData => {
             const row = tbody.append('tr');
 
-            row.on('mouseover', function(event) {
-                tooltip.html(caseData.Description || 'No description available.')
-                    .classed('invisible', false)
-                    .classed('opacity-0', false)
-                    .classed('opacity-100', true)
-                    .style('z-index', 1001);
-            })
-            .on('mousemove', function(event) {
-                const [x, y] = d3.pointer(event, mapContainer.node());
-                tooltip.style('left', `${x + 15}px`).style('top', `${y}px`);
-            })
-            .on('mouseout', function() {
-                hideTooltip();
-            });
+            // row.on('mouseover', function(event) {
+            //     tooltip.html(caseData.Description || 'No description available.')
+            //         .classed('invisible', false)
+            //         .classed('opacity-0', false)
+            //         .classed('opacity-100', true)
+            //         .style('z-index', 1001);
+            // })
+            // .on('mousemove', function(event) {
+            //     const [x, y] = d3.pointer(event, mapContainer.node());
+            //     tooltip.style('left', `${x + 15}px`).style('top', `${y}px`);
+            // })
+            // .on('mouseout', function() {
+            //     hideTooltip();
+            // });
             
             columnsToShow.forEach(col => {
                 row.append('td').text(caseData[col] || 'N/A');
@@ -688,7 +782,7 @@ function toggleCasesLayer() {
         sliderContainer.style('visibility', 'visible');
         timelineContainer.style('visibility', 'visible');
         if (areCasesLoaded) {
-            if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission') {
+            if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission' && activeRasterLayerId !== 'seaLevel') {
                 const years = allCasesData.map(d => +d['Filing Year']);
                 yearSlider.attr('min', d3.min(years)).attr('max', d3.max(years));
             }
@@ -702,7 +796,7 @@ function toggleCasesLayer() {
                 const maxCases = d3.max(d3.rollup(allCasesData, v => v.length, d => d.Jurisdictions).values());
                 caseColorScale = d3.scaleLog().domain([1, maxCases]).range(['#ff7c7c8c', '#eb0000c7']);
                 
-                if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission') {
+                if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission' && activeRasterLayerId !== 'seaLevel') {
                     const years = allCasesData.map(d => +d['Filing Year']);
                     const minYear = d3.min(years);
                     const maxYear = d3.max(years);
@@ -991,6 +1085,8 @@ d3.select('#toggle-climate-raster-btn').on('click', toggleEmissionLayer);
 d3.select('#toggle-climate-btn').on('click', toggleTempLayer);
 d3.select('#toggle-cases-btn').on('click', toggleCasesLayer);
 d3.select('#toggle-burn-btn').on('click', toggleBurnLayer); 
+d3.select('#toggle-sea-level-btn').on('click', toggleSeaLevelLayer);
+
 
 yearSlider.on('input', () => {
     const selectedYear = yearSlider.property('value');
@@ -1005,6 +1101,8 @@ yearSlider.on('input', () => {
         loadAndRenderTemperatureData(selectedYear);
     } else if (activeRasterLayerId === 'emission') {
         loadAndRenderEmissionData(selectedYear);
+    } else if (activeRasterLayerId === 'seaLevel') {
+        loadAndRenderSeaLevelData(selectedYear);
     }
 });
 
@@ -1166,4 +1264,3 @@ window.setKeyboardMode = function(hasKeyboard) {
 
 // Initial setup when the script loads for the first time
 setupSearchInteractions();
-

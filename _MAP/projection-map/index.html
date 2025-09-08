@@ -19,9 +19,10 @@
       <button id="toggle-cases-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Climate Cases</button>
       <button id="toggle-climate-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Temperature</button>
       <button id="toggle-climate-raster-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Emmission</button>
-      <button id="toggle-wind-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Wind</button>
+      <!-- <button id="toggle-wind-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Wind</button> -->
+      <button id="toggle-sea-level-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Sea Level</button>
       <button id="toggle-burn-btn" class="px-4 py-2 bg-black font-bold transition-colors rounded-none border-r border-white border-y-0 border-x-0">Burns</button>
-      <button id="download-svg-btn" class="px-4 py-2 bg-white text-black font-bold hover:bg-gray-800 transition-colors rounded-none border-r border-white">Download SVG</button>
+      <!-- <button id="download-svg-btn" class="px-4 py-2 bg-white text-black font-bold hover:bg-gray-800 transition-colors rounded-none border-r border-white">Download SVG</button> -->
 
       <!-- Slider is inside the header -->
       <div id="slider-container">
@@ -73,11 +74,16 @@
             <div class="filter-item"><input type="checkbox" id="filter-cat8" name="category" value="Green"><label for="filter-cat8" >Greenwashing</label></div>
           </div>
         </div>
-        <div style="width: 250px" class="absolute text-xs bottom-5">Climate Change Litigation Database sourced from Sabin Center for Climate Change Law. <u>www.climatecasechart.com</u></div>
+        <div style="width: 250px" class="absolute text-xs bottom-5">Climate Change Litigation Database sourced from Sabin Center for Climate Change Law. <u>www.climatecasechart.com </u>| <i>Downloaded on 29-07-2025</i></div>
       </div>
 
       <div id="map-container" class="flex-grow flex items-center justify-center relative overflow-hidden">
-        
+        <div id="wind-toggle-container">
+        <label>
+          <input type="checkbox" id="toggle-wind-btn">
+          Wind Layer
+        </label>
+      </div>
         <!-- NEW: Attractor Screen -->
         <div id="attractor-screen">
           <h1 id="attractor-title">Atlas of Climate Cases</h1>

@@ -88,12 +88,12 @@ button:focus-visible {
 /* NEW: Keyframes for the pulsing glow effect */
 @keyframes pulse-glow {
   0% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 0 0 rgba(97, 97, 97, 0.4);
     background-color: #1a1a1a;
   }
   70% {
     box-shadow: 0 0 10px 8px rgba(255, 255, 255, 0);
-    background-color: #3a3a3a;
+    background-color: #7c7c7c;
   }
   100% {
     box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
@@ -198,8 +198,8 @@ main {
 
 /* Style for the selected country */
 .active-country {
-  fill: rgba(110, 1, 252, 0.411) !important;
-  stroke: #ffffff00; /* White stroke for the active country */
+  fill: rgba(0, 119, 216, 0.596) !important;
+  stroke: #ffffff88; /* White stroke for the active country */
   stroke-width: 1.5px;
 }
 
@@ -664,3 +664,69 @@ main {
   to { opacity: 1; }
 }
 
+/* Custom Checkbox Styling for Wind Layer */
+#wind-toggle-container {
+  position: absolute;
+  top: 20px; /* Adjust as needed */
+  left: 20px; /* Adjust as needed */
+  z-index: 100; /* Ensure it's above the map */
+  display: flex;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 8px;
+}
+
+#wind-toggle-container label {
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+#wind-toggle-container input[type="checkbox"] {
+  /* Hide the default browser checkbox */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  
+  /* Dimensions of the custom checkbox */
+  width: 20px;
+  height: 20px;
+  
+  /* Styling for the unchecked state */
+  background-color: white;
+  border: 2px solid black;
+  border-radius: 0; /* Straight corners */
+  cursor: pointer;
+  position: relative;
+  margin-right: 10px;
+  
+  /* Smooth transition for background color */
+  transition: background-color 0.2s ease-in-out;
+}
+
+#wind-toggle-container input[type="checkbox"]:checked {
+  /* Styling for the checked state */
+  background-color: black;
+  border-color: white;
+}
+
+/* Creating the checkmark using a pseudo-element */
+#wind-toggle-container input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  
+  /* Position and size of the checkmark */
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  
+  /* Styling the checkmark */
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  
+  /* Rotating it to look like a checkmark */
+  transform: rotate(45deg);
+}
