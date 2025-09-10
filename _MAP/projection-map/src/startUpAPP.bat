@@ -14,7 +14,7 @@ ECHO Starting the application environment...
 REM --- STEP 1: Set your project path and URL ---
 REM IMPORTANT: Change these variables to match your setup.
 SET PROJECT_PATH="C:\Users\LattePanda\Documents\climate-rights\_MAP\projection-map"
-SET DEV_URL="http://localhost:5137"
+SET DEV_URL="http://localhost:5173"
 
 REM --- STEP 2: Navigate to the project directory ---
 ECHO Navigating to project directory...
@@ -41,8 +41,8 @@ ECHO Launching browser in kiosk mode...
 
 REM --- Option A: For Google Chrome ---
 REM Remove "REM" from the line below if you use Google Chrome.
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk %DEV_URL%
-
+REM start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk %DEV_URL%
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --start-fullscreen --kiosk %DEV_URL%
 REM --- Option B: For Microsoft Edge ---
 REM Remove "REM" from the line below if you use Microsoft Edge.
 REM start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --kiosk %DEV_URL%

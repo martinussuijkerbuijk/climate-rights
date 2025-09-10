@@ -5,8 +5,8 @@ import { WindAnimator } from './wind.js'; // <-- IMPORT YOUR NEW MODULE
 
 // --- Map Configuration ---
 let keyboard = false;
-const width = 2010;
-const height = 1280;
+const width = 2200;
+const height = 1470;
 const worldJsonUrl = 'https://unpkg.com/world-atlas@2/countries-110m.json';
 const caseDataUrl = 'CASES_COMBINED_status.csv'; 
 const climateContoursUrl = 'sea_level_contours_qgis.topojson'; 
@@ -666,8 +666,8 @@ function toggleWindLayer() {
 function updateTimeline(caseData) {
     timelineSvg.selectAll('*').remove();
     const timelineHeight = 160;
-    const timelineWidth = timelineContainer.node().getBoundingClientRect().width;
-    const margin = { top: 20, right: 40, bottom: 30, left: 40 };
+    const timelineWidth = 1200;
+    const margin = { top: 20, right: 0, bottom: 30, left: 40 };
     const width = timelineWidth - margin.left - margin.right;
     const height = timelineHeight - margin.top - margin.bottom;
 
@@ -690,7 +690,13 @@ function updateTimeline(caseData) {
         .data(caseData.filter(d => d['Filing Year'] >= 1986 && d['Filing Year'] <= 2025))
         .join('circle')
         .attr('class', 'timeline-dot')
-        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50)) 
+        .attr('cx', d => {
+            const baseCx = x(+d['Filing Year']);
+            const jitter = (Math.random() * 100 - 50);
+            const finalCx = baseCx + jitter;
+            // Clamp the value to ensure it stays within the visible bounds of the axis
+            return Math.max(0, Math.min(width, finalCx));
+        }) 
         .attr('cy', height / 2 + (Math.random() * 40 - 20))
         .attr('r', 3)
         .on('click', (event, d) => {

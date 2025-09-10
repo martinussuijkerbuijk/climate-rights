@@ -367,7 +367,7 @@ main {
 
 .filter-values {
   padding-left: 1rem;
-  margin-top: 0.5rem;
+  margin-top: 0rem;
   display: none; /* Hidden by default, shown by JS */
 }
 
@@ -378,7 +378,7 @@ main {
 .filter-item {
   display: flex;
   align-items: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
   cursor: pointer;
 }
 
@@ -421,11 +421,11 @@ main {
 #info-box {
   position: fixed;
   top: 50%;
-  left: 50%;
+  left: 56%;
   transform: translate(-50%, -50%);
-  width: 60vw;
-  max-width: 900px;
-  height: 68vh;
+  width: 42vw;
+  max-width: 850px;
+  height: 61vh;
   background-color: rgba(0, 0, 0, 0.9);
   border: 1px solid #fff;
   z-index: 1000;
@@ -526,7 +526,7 @@ main {
 }
 
 #timeline-svg .timeline-dot:hover {
-  fill: rgb(110, 1, 252);
+  fill: rgb(212, 0, 0);
   r: 5;
 }
 
@@ -536,10 +536,11 @@ main {
   top: 0;
   right: 0;
   bottom: 160px; /* Stop at the top of the timeline */
-  z-index: 20; /* Ensure it's above the timeline */
+  z-index: 10; /* Ensure it's above the timeline */
   width: 350px;
   background-color: #000;
   border-left: 1px solid #fff;
+  overflow-y: hidden;
   display: flex;
   flex-direction: column;
   transition: transform 0.3s ease-in-out;
@@ -580,7 +581,7 @@ main {
   flex-grow: 1;
   overflow-y: hidden;
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.75rem;
 }
 
 #timeline-detail-content h4 {
