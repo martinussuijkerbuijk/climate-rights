@@ -23,6 +23,10 @@ let windDataCache = null;
 let userHasInteracted = false;
 let rotationTimer = null;
 
+// NEW: Inactivity timer variables
+let inactivityTimer = null;
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
 
 // --- DOM Selections ---
 const mapContainer = d3.select('#map-container');
@@ -57,7 +61,7 @@ const MIN_RENDER_INTERVAL = 100;
 const rasterLayers = {
     emission: {
         id: 'emission',
-        title: 'Emission Data',
+        title: 'NO2 Emission Data | mol/m^2',
         domain: [0.00, 0.21, 0.41, 0.62, 0.82, 1.03, 1.24, 1.44, 1.65, 1.85, 2.06],
         colors: ['black', '#1f1f1fff', '#696969ff', '#72838bff', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b', '#a50f6bff', '#d4009fff'],
         data: null,
@@ -66,7 +70,7 @@ const rasterLayers = {
     },
     temperature: {
         id: 'temperature',
-        title: 'Temperature Anomaly',
+        title: 'Mean Temperature (July) | °C',
         domain: [-75., -52.5, -29.8, -7.2, 15.4, 38., 61.],
         colors: ['#34258fff', '#681a72ff', '#9d9e48ff', '#ccb21fff', '#e09524ff', '#eb1f00ff', '#570000ff'],
         data: null,
@@ -84,7 +88,7 @@ const rasterLayers = {
     },
     seaLevel: {
         id: 'seaLevel',
-        title: 'Sea Level Anomaly',
+        title: 'Sea Level Anomaly | M',
         domain: [-1.5, - 1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1., 1.25],
         colors: ['#053061', '#2166ac', '#4393c3', '#c197f8ff', '#d650ffff', '#e2abd6ff', '#9b9b9bff', '#f4a582', '#d3887cff', '#d15353ff','#f14e61ff', '#ff001eff'],
         data: null,
@@ -92,6 +96,16 @@ const rasterLayers = {
         dataCache: {}
     }
 };
+
+// NEW: Descriptions for raster layer tooltips
+const rasterLayerDescriptions = {
+    seaLevel: "Sea surface height above the geoid computed as the sum of the sea level anomaly with the mean dynamic topography. Daily fields are provided.",
+    emission: "This layer displays the concentration of tropospheric Nitrogen Dioxide (NO2), a key indicator of air pollution primarily from industrial activities and vehicle emissions.",
+    burn: "This layer illustrates the cumulative burned area throughout the selected year. The color indicates the day of the year the fire was detected, providing a timeline of fire events.",
+    temperature: "This layer represents the surface temperature through out July on an 8-day average. Red areas are hotter regions, and blue areas are cooler."
+};
+
+
 let activeRasterLayerId = null; 
 let climateCanvas = null;
 let climateCanvasContext = null;
@@ -113,6 +127,34 @@ function createClimateCanvas() {
     climateCanvasContext = climateCanvas.node().getContext('2d');
     climateCanvasContext.imageSmoothingEnabled = false; 
     climateCanvasContext.globalCompositeOperation = 'source-over';
+}
+
+
+// NEW: Inactivity timer functions
+function resetToAttractorScreen() {
+    console.log("Inactivity detected. Resetting to the main screen.");
+    window.location.reload();
+
+}
+
+function resetTimer() {
+    // Clear the previous timer
+    clearTimeout(inactivityTimer);
+    // Start a new timer
+    inactivityTimer = setTimeout(resetToAttractorScreen, INACTIVITY_TIMEOUT);
+}
+
+function setupInactivityListeners() {
+    // List of events that count as user activity
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'];
+    
+    // Add a listener for each event that resets the timer
+    activityEvents.forEach(eventName => {
+        window.addEventListener(eventName, resetTimer, true);
+    });
+    
+    // Start the timer for the first time
+    resetTimer();
 }
 
 function debouncedRenderClimateRaster() {
@@ -187,8 +229,30 @@ function renderClimateRasterCanvas() {
 
 
 function createClimateRasterLegend(layer, colorScale) {
-    const group = legendItems.append('div').attr('id', 'raster-legend-group');
-    group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white').text(layer.title);
+    const group = legendItems.append('div')
+        .attr('id', 'raster-legend-group')
+        .attr('class', 'cursor-help') // Add help cursor to the whole group
+        .on('mouseover', function(event) {
+            const description = rasterLayerDescriptions[layer.id] || 'No description available.';
+            tooltip.html(description)
+                .classed('invisible', false)
+                .classed('opacity-0', false)
+                .classed('opacity-100', true)
+                .style('max-width', '350px') // Set max width for the tooltip
+                .style('z-index', 1001);
+        })
+        .on('mousemove', function(event) {
+            const [x, y] = d3.pointer(event, mapContainer.node());
+            tooltip.style('left', `${x + 15}px`).style('top', `${y}px`);
+        })
+        .on('mouseout', function() {
+            hideTooltip();
+        });
+
+    // Append the title without event listeners
+    group.append('div')
+        .attr('class', 'text-sm font-semibold mb-2 text-white')
+        .text(layer.title);
     
     if (layer.id === 'burn') {
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1264,3 +1328,6 @@ window.setKeyboardMode = function(hasKeyboard) {
 
 // Initial setup when the script loads for the first time
 setupSearchInteractions();
+
+// NEW: Start listening for user inactivity
+setupInactivityListeners();
