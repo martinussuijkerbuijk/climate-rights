@@ -282,6 +282,7 @@ main {
   padding: 1rem;
   border-right: 1px solid #ffffff;
   overflow-y: auto; /* Allows scrolling if content overflows */
+  z-index: 500;
 }
 
 .search-container {
@@ -421,10 +422,10 @@ main {
 #info-box {
   position: fixed;
   top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  right: 2%;
+  transform: translate(-41%, -50%);
   width: 60vw;
-  max-width: 900px;
+  max-width: 800px;
   height: 68vh;
   background-color: rgba(0, 0, 0, 0.9);
   border: 1px solid #fff;
@@ -729,4 +730,159 @@ main {
   
   /* Rotating it to look like a checkmark */
   transform: rotate(45deg);
+}
+
+/* New container for the button and popup to manage positioning and animation */
+.chat-widget-container {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%) translateX(-50px); /* Start with the popup hidden off-screen */
+  transition: transform 0.4s ease-in-out;
+  display: flex;
+  align-items: center;
+  z-index: 499;
+}
+
+/* When the 'open' class is added, slide the container into view */
+.chat-widget-container.open {
+  transform: translateY(-50%) translateX(299px);
+}
+
+/* Updated Button styles for the vertical tab */
+.chat-toggle-button {
+  background-color: #000;
+  color: white;
+  border: 1px solid white;
+  border-left: none;
+  cursor: pointer;
+  padding: 16px 8px;
+  writing-mode: vertical-rl; /* Makes text vertical */
+  text-orientation: mixed;
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+  border-radius: 0 8px 8px 0;
+}
+
+.chat-toggle-button:hover {
+  background-color: #1a1a1a;
+}
+
+/* The chat window container */
+.chat-popup {
+  display: flex; /* Changed from none to flex to allow transitions */
+  width: 350px;
+  height: 500px;
+  background-color: #000000;
+  border: 1px solid #ffffff;
+  z-index: 2001;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Chat header */
+.chat-header {
+  padding: 15px;
+  background-color: #000000;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #ffffff;
+  flex-shrink: 0;
+}
+.chat-header h2 {
+  margin: 0;
+  font-size: 1.1em;
+}
+.chat-header .close-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 24px;
+  cursor: pointer;
+}
+.chat-header .close-btn:hover {
+  color: white;
+}
+
+/* Messages container */
+.chat-messages {
+  flex-grow: 1;
+  padding: 15px;
+  overflow-y: auto;
+  background-color: #000000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Styling for individual messages */
+.message {
+  padding: 10px 15px;
+  max-width: 80%;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.user-message {
+  background-color: #000000;
+  border: 1px solid #ffffff;
+  color: #f1f1f1;
+  align-self: flex-end; /* Aligns user messages to the right */
+}
+
+.ai-message {
+  background-color: #000000;
+  border: 1px solid #ffffff;
+  color: #f1f1f1;
+  align-self: flex-start; /* Aligns AI messages to the left */
+}
+
+/* Input area form */
+.chat-input {
+  display: flex;
+  padding: 10px;
+  border-top: 1px solid #ffffff;
+  background-color: #000000;
+  flex-shrink: 0;
+}
+
+.chat-input input {
+  flex-grow: 1;
+  padding: 10px;
+  border: 1px solid #ffffff;
+  background-color: #000000;
+  color: white;
+  margin-right: 10px;
+  outline: none;
+}
+
+.chat-input button {
+  padding: 10px 15px;
+  background-color: #000000;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  cursor: pointer;
+  border-radius: 0;
+  font-weight: bold;
+}
+.chat-input button:hover {
+  background-color: #1b1b1b;
+}
+
+/* Loader animation */
+.loader {
+  border: 3px solid #555;
+  border-radius: 50%;
+  border-top: 3px solid #fff;
+  width: 18px;
+  height: 18px;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }

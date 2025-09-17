@@ -13,6 +13,21 @@ const climateContoursUrl = 'sea_level_contours_qgis.topojson';
 const baseScale = 200; 
 const windDataUrl = 'current-wind-surface-level-gfs-1.0.json'
 
+// --- For chat WIndow ---
+const chatWidget = document.getElementById('chatWidget');
+// --- CHAT FUNCTIONALITY SCRIPT ---
+const chatMessages = document.getElementById('chatMessages');
+const promptInput = document.getElementById('promptInput');
+const sendButton = document.getElementById('sendButton');
+const closeChatButton = document.getElementById('chatCloseBtn');
+const toggleChatButton = document.getElementById('chatToggleBtn');
+const ChatFormButton = document.getElementById('chatForm');
+
+const originalButtonContent = sendButton.innerHTML;
+
+// Generate a unique session ID for this visit
+const sessionId = crypto.randomUUID(); // <-- NEW
+
 
 // --- Add new state variables ---
 let windAnimator = null;
@@ -95,6 +110,92 @@ const rasterLayers = {
 let activeRasterLayerId = null; 
 let climateCanvas = null;
 let climateCanvasContext = null;
+
+// --- Chat Functions --- BEGIN
+// --- CHAT WIDGET VISIBILITY ---
+function toggleChat() {
+    chatWidget.classList.toggle('open');
+}
+
+// Attach event listeners for opening and closing the chat
+if (toggleChatButton) {
+    toggleChatButton.addEventListener('click', toggleChat);
+}
+if (closeChatButton) {
+    closeChatButton.addEventListener('click', toggleChat);
+}
+
+async function sendPrompt(event) {
+    event.preventDefault(); // Prevents the form from reloading the page
+    
+    const promptText = promptInput.value.trim();
+    if (!promptText) return;
+
+    // --- Add User's Message to Chat ---
+    addMessage(promptText, 'user-message');
+    promptInput.value = ''; // Clear the input field
+
+    // --- Show Loader and Disable Button ---
+    sendButton.innerHTML = '<div class="loader"></div>';
+    sendButton.disabled = true;
+
+    // --- Prepare and Send Request ---
+    const n8nWebhookUrl = 'https://martinus-suijkerbuijk.app.n8n.cloud/webhook/climate-cases'; // <-- ### YOUR N8N URL ###
+    
+    // Construct the data object to send, now including the sessionId
+    const dataToSend = { 
+        prompt: promptText,
+        sessionId: sessionId // <-- MODIFIED
+    };
+
+    try {
+        const response = await fetch(n8nWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataToSend),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        // --- Add AI's Response to Chat ---
+        if (data && data.output !== undefined) {
+            addMessage(data.output, 'ai-message');
+        } else {
+            addMessage('Received an unexpected response format.', 'ai-message');
+        }
+
+    } catch (error) {
+        console.error('Error sending prompt or processing response:', error);
+        addMessage(`An error occurred: ${error.message}`, 'ai-message');
+    } finally {
+        // --- Restore Button ---
+        sendButton.innerHTML = originalButtonContent;
+        sendButton.disabled = false;
+    }
+}
+
+// Attach event listener for form submission
+if (ChatFormButton) {
+    ChatFormButton.addEventListener('submit', sendPrompt);
+}
+
+function addMessage(content, className) {
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', className);
+    messageDiv.innerHTML = content; // Using innerHTML to render any HTML from the response
+    chatMessages.appendChild(messageDiv);
+
+    // Scroll to the latest message
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// --- Chat Functions --- END
+
 
 function createClimateCanvas() {
     climateCanvas = d3.select('#map-container')
