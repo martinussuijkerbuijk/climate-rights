@@ -1,6 +1,5 @@
-import * as d3 from 'https://cdn.skypack.dev/d3@7';
-import * as topojson from 'https://cdn.skypack.dev/topojson-client@3';
-import 'https://cdn.skypack.dev/d3-geo-projection@4';
+import * as d3 from 'd3';
+import * as topojson from 'topojson-client';
 import { WindAnimator } from './wind.js'; // <-- IMPORT YOUR NEW MODULE
 
 // --- Map Configuration ---
@@ -8,9 +7,11 @@ let keyboard = false;
 const width = 2010;
 const height = 1280;
 const worldJsonUrl = 'https://unpkg.com/world-atlas@2/countries-110m.json';
-const caseDataUrl = 'CASES_COMBINED_status.csv'; 
-const climateContoursUrl = 'sea_level_contours_qgis.topojson'; 
-const baseScale = 200; 
+const caseDataUrl = 'CASES_COMBINED_status.csv';
+// NEW: Add the URL for your new disaster data CSV
+const disasterDataUrl = 'public_emdat_custom_request_Natural.cvs';
+const climateContoursUrl = 'sea_level_contours_qgis.topojson';
+const baseScale = 200;
 const windDataUrl = 'current-wind-surface-level-gfs-1.0.json'
 
 // --- For chat WIndow ---
@@ -33,6 +34,14 @@ const sessionId = crypto.randomUUID(); // <-- NEW
 let windAnimator = null;
 let isWindLayerVisible = false;
 let windDataCache = null;
+
+// NEW: State variables for the disaster layer
+let allDisasterData = [];
+let isDisasterLayerVisible = false;
+let areDisastersLoaded = false;
+let disasterColorScale;
+let disasterCountColorScale;
+
 
 // NEW: State for attractor loop
 let userHasInteracted = false;
@@ -60,13 +69,25 @@ const timelineDetailContent = d3.select('#timeline-detail-content');
 const timelineDetailClose = d3.select('#timeline-detail-close');
 const attractorScreen = d3.select('#attractor-screen'); // NEW
 
+// Related to country selection
+let countries = [];
+let caseColorScale;
+let climateContourData = null;
+let isClimateLayerVisible = false;
+let areCasesLoaded = false;
+let isCasesLayerVisible = false;
+let allCasesData = [];
+let activeStatusFilters = new Set();
+let activeCategoryFilters = new Set();
+let activeCountryName = null;
 
 // Add these variables at the top with other state variables
 let renderTimeout = null;
 let isRendering = false;
 let lastRenderTime = 0;
-const RENDER_DEBOUNCE_MS = 150; 
-const MIN_RENDER_INTERVAL = 100; 
+const RENDER_DEBOUNCE_MS = 150;
+const MIN_RENDER_INTERVAL = 100;
+
 
 // --- RASTER LAYER HANDLING ---
 const rasterLayers = {
@@ -107,7 +128,7 @@ const rasterLayers = {
         dataCache: {}
     }
 };
-let activeRasterLayerId = null; 
+let activeRasterLayerId = null;
 let climateCanvas = null;
 let climateCanvasContext = null;
 
@@ -127,7 +148,7 @@ if (closeChatButton) {
 
 async function sendPrompt(event) {
     event.preventDefault(); // Prevents the form from reloading the page
-    
+
     const promptText = promptInput.value.trim();
     if (!promptText) return;
 
@@ -141,12 +162,21 @@ async function sendPrompt(event) {
 
     // --- Prepare and Send Request ---
     const n8nWebhookUrl = 'https://martinus-suijkerbuijk.app.n8n.cloud/webhook/climate-cases'; // <-- ### YOUR N8N URL ###
-    
+
     // Construct the data object to send, now including the sessionId
-    const dataToSend = { 
+    const dataToSend = {
         prompt: promptText,
         sessionId: sessionId // <-- MODIFIED
     };
+
+    // If activeCountryName has a value (is not null), add it to the data payload.
+    if (activeCountryName) {
+        dataToSend.country = activeCountryName;
+    }
+
+    else {
+        activeCountryName = "United States of America"
+    }
 
     try {
         const response = await fetch(n8nWebhookUrl, {
@@ -162,9 +192,12 @@ async function sendPrompt(event) {
 
         const data = await response.json();
 
+        // --- ADD THIS LINE FOR DEBUGGING ---
+        console.log('Received data from webhook:', data);
+
         // --- Add AI's Response to Chat ---
-        if (data && data.output !== undefined) {
-            addMessage(data.output, 'ai-message');
+        if (Array.isArray(data) && data.length > 0 && data[0].data !== undefined) {
+            addMessage(data[0].data, 'ai-message');
         } else {
             addMessage('Received an unexpected response format.', 'ai-message');
         }
@@ -212,7 +245,7 @@ function createClimateCanvas() {
         .style('visibility', 'hidden')
         .style('z-index', -1);
     climateCanvasContext = climateCanvas.node().getContext('2d');
-    climateCanvasContext.imageSmoothingEnabled = false; 
+    climateCanvasContext.imageSmoothingEnabled = false;
     climateCanvasContext.globalCompositeOperation = 'source-over';
 }
 
@@ -264,7 +297,7 @@ function renderClimateRasterCanvas() {
             if (!projected) continue;
             const [x, y] = projected;
             if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue;
-            
+
             climateCanvasContext.fillStyle = colorScale(value);
 
             if (activeRasterLayerId === 'burn') {
@@ -290,7 +323,7 @@ function renderClimateRasterCanvas() {
 function createClimateRasterLegend(layer, colorScale) {
     const group = legendItems.append('div').attr('id', 'raster-legend-group');
     group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white').text(layer.title);
-    
+
     if (layer.id === 'burn') {
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const dayToMonth = (day) => {
@@ -310,7 +343,7 @@ function createClimateRasterLegend(layer, colorScale) {
         legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => d.color);
         legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => d.label);
     } else {
-        const legendData = layer.domain; 
+        const legendData = layer.domain;
         const legendItemsElements = group.selectAll('.climate-legend-item').data(legendData).join('div').attr('class', 'climate-legend-item flex items-center mb-1');
         legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => colorScale(d));
         legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => d.toFixed(2));
@@ -346,7 +379,7 @@ function loadAndRenderEmissionData(year) {
 function toggleEmissionLayer() {
     stopAttractorLoop();
     const layer = rasterLayers.emission;
-    
+
     if (!layer.isVisible) {
         if (rasterLayers.burn.isVisible) toggleBurnLayer();
         if (rasterLayers.temperature.isVisible) toggleTempLayer();
@@ -361,7 +394,7 @@ function toggleEmissionLayer() {
         d3.select('#filter-cat2').property('checked', true);
         activeCategoryFilters.add('Emission');
         if (isCasesLayerVisible) updateMap();
-        
+
         const yearRange = { min: 2018, max: 2025, default: 2019 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
@@ -418,7 +451,7 @@ function loadAndRenderTemperatureData(year) {
 function toggleTempLayer() {
     stopAttractorLoop();
     const layer = rasterLayers.temperature;
-    
+
     if (!layer.isVisible) {
         if (rasterLayers.burn.isVisible) toggleBurnLayer();
         if (rasterLayers.emission.isVisible) toggleEmissionLayer();
@@ -433,7 +466,7 @@ function toggleTempLayer() {
         // d3.select('#filter-cat2').property('checked', true);
         // activeCategoryFilters.add('Emission');
         if (isCasesLayerVisible) updateMap();
-        
+
         const yearRange = { min: 2015, max: 2025, default: 2025 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
@@ -472,12 +505,12 @@ function loadAndRenderBurnData(year) {
     }
 
     legendItems.html(`<div class="text-white text-sm">Loading burn data for ${year}...</div>`);
-    const dataUrl = `burns/burned_area_${year}-01-01.json`; 
+    const dataUrl = `burns/burned_area_${year}-01-01.json`;
 
     d3.text(dataUrl).then(text => {
         const cleanedText = text.replace(/NaN/g, 'null');
         const data = JSON.parse(cleanedText);
-        
+
         layer.dataCache[year] = data;
         layer.data = data;
         renderClimateRasterCanvas();
@@ -508,7 +541,7 @@ function toggleBurnLayer() {
         d3.select('#filter-cat1').property('checked', true);
         activeCategoryFilters.add('Fire');
         if (isCasesLayerVisible) updateMap();
-        
+
         const yearRange = { min: 2015, max: 2025, default: 2025 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
@@ -521,7 +554,7 @@ function toggleBurnLayer() {
         d3.select('#filter-cat1').property('checked', false);
         activeCategoryFilters.delete('Fire');
         if (isCasesLayerVisible) updateMap();
-        
+
         if (climateCanvas) climateCanvas.style('visibility', 'hidden');
         if (isCasesLayerVisible) {
             const years = allCasesData.map(d => +d['Filing Year']);
@@ -548,12 +581,12 @@ function loadAndRenderSeaLevelData(year) {
     legendItems.html(`<div class="text-white text-sm">Loading sea level data for ${year}...</div>`);
     // NOTE: This URL is a placeholder based on the structure of other data URLs.
     // You may need to replace `sea_level/sea_level_anomaly_${year}-01-01.json` with the correct path.
-    const dataUrl = `seaLevel/sea_level_anomaly_${year}-07-15.json`; 
+    const dataUrl = `seaLevel/sea_level_anomaly_${year}-07-15.json`;
 
     d3.text(dataUrl).then(text => {
         const cleanedText = text.replace(/NaN/g, 'null');
         const data = JSON.parse(cleanedText);
-        
+
         layer.dataCache[year] = data;
         layer.data = data;
         renderClimateRasterCanvas();
@@ -583,7 +616,7 @@ function toggleSeaLevelLayer() {
     if (layer.isVisible) {
         activeRasterLayerId = 'seaLevel';
         if (isCasesLayerVisible) updateMap();
-        
+
         const yearRange = { min: 2015, max: 2023, default: 2023 };
         yearSlider.attr('min', yearRange.min).attr('max', yearRange.max).attr('value', yearRange.default);
         yearLabel.text(yearRange.default);
@@ -594,7 +627,7 @@ function toggleSeaLevelLayer() {
     } else {
         activeRasterLayerId = null;
         if (isCasesLayerVisible) updateMap();
-        
+
         if (climateCanvas) climateCanvas.style('visibility', 'hidden');
         if (isCasesLayerVisible) {
             const years = allCasesData.map(d => +d['Filing Year']);
@@ -615,7 +648,7 @@ function cleanupRasterResources() {
         renderTimeout = null;
     }
     isRendering = false;
-    
+
     if (climateCanvasContext) {
         climateCanvasContext.clearRect(0, 0, width, height);
     }
@@ -626,6 +659,7 @@ window.addEventListener('beforeunload', cleanupRasterResources);
 let elevationLevels = [];
 let seaLevelColorScale = null;
 const svg = mapContainer.append('svg').attr('width', '100%').attr('height', '100%').attr('viewBox', `0 0 ${width} ${height}`).attr('class', 'globe');
+const defs = svg.append('defs');
 const g = svg.append('g');
 const projection = d3.geoAzimuthalEquidistant().scale(baseScale).translate([width / 2, height / 2]).clipAngle(180 - 1e-3);
 
@@ -638,24 +672,17 @@ g.append('path').datum({ type: 'Sphere' }).attr('class', 'sphere').attr('d', pat
 g.append('path').datum(d3.geoGraticule10()).attr('class', 'graticule').attr('d', pathGenerator);
 const countryPaths = g.append('g').attr('class', 'country-paths');
 const climateLayer = g.append('g').attr('class', 'climate-layer').style('visibility', 'hidden');
+// NEW: Add an SVG group for the disaster dots
+const disasterLayer = g.append('g').attr('class', 'disaster-layer').style('visibility', 'hidden');
 
-let countries = [];
-let caseColorScale; 
-let climateContourData = null;
-let isClimateLayerVisible = false;
-let areCasesLoaded = false;
-let isCasesLayerVisible = false;
-let allCasesData = [];
-let activeStatusFilters = new Set();
-let activeCategoryFilters = new Set(); 
-let activeCountryName = null; 
 
-function hideInfoBox() { 
-    activeCountryName = null; 
+
+function hideInfoBox() {
+    activeCountryName = null;
     infoBox.classed('opacity-100', false)
-           .classed('opacity-0', true)
-           .classed('invisible', true)
-           .style('pointer-events', 'none'); 
+        .classed('opacity-0', true)
+        .classed('invisible', true)
+        .style('pointer-events', 'none');
     if (isCasesLayerVisible) {
         updateTimeline(allCasesData);
     }
@@ -665,7 +692,7 @@ function clearLegend() { legendItems.selectAll('*').remove(); }
 
 function updateLegendVisibility() {
     const legend = d3.select('#legend');
-    const isAnyLayerVisible = isCasesLayerVisible || activeRasterLayerId || isWindLayerVisible;
+    const isAnyLayerVisible = isCasesLayerVisible || activeRasterLayerId || isWindLayerVisible || isDisasterLayerVisible;
     legend.style('visibility', isAnyLayerVisible ? 'visible' : 'hidden');
 }
 
@@ -679,7 +706,7 @@ function toggleWindLayer() {
         // if (rasterLayers.emission.isVisible) toggleEmissionLayer();
         // if (rasterLayers.burn.isVisible) toggleBurnLayer();
         // if (rasterLayers.seaLevel.isVisible) toggleSeaLevelLayer();
-        
+
         sliderContainer.style('visibility', 'hidden');
 
         if (windDataCache) {
@@ -687,7 +714,7 @@ function toggleWindLayer() {
         } else {
             legendItems.html(`<div class="text-white text-sm">Loading wind data...</div>`);
             d3.json(windDataUrl).then(data => {
-                windDataCache = data; 
+                windDataCache = data;
                 windAnimator.start(windDataCache);
             }).catch(error => {
                 console.error("Error loading wind data:", error);
@@ -711,7 +738,7 @@ function updateTimeline(caseData) {
     const svg = timelineSvg
         .append('g')
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
-    
+
     const x = d3.scaleLinear()
         .domain([1986, 2025])
         .range([0, width]);
@@ -727,7 +754,7 @@ function updateTimeline(caseData) {
         .data(caseData.filter(d => d['Filing Year'] >= 1986 && d['Filing Year'] <= 2025))
         .join('circle')
         .attr('class', 'timeline-dot')
-        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50)) 
+        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50))
         .attr('cy', height / 2 + (Math.random() * 40 - 20))
         .attr('r', 3)
         .on('click', (event, d) => {
@@ -749,15 +776,15 @@ function updateTimeline(caseData) {
 
 function renderInfoBoxContent() {
     if (!activeCountryName) {
-        return; 
+        return;
     }
 
     const contentDiv = d3.select('#info-box-content');
-    contentDiv.html(''); 
+    contentDiv.html('');
 
     const selectedYear = yearSlider.property('value');
-    let countryCases = allCasesData.filter(d => 
-        d.Jurisdictions === activeCountryName && 
+    let countryCases = allCasesData.filter(d =>
+        d.Jurisdictions === activeCountryName &&
         d['Filing Year'] <= selectedYear
     );
 
@@ -776,9 +803,9 @@ function renderInfoBoxContent() {
         const table = contentDiv.append('table');
         const thead = table.append('thead').append('tr');
         const columnsToShow = ['Case Name', 'Filing Year', 'Status', 'Extracted Climate Issue'];
-        
+
         columnsToShow.forEach(col => thead.append('th').text(col));
-        
+
         const tbody = table.append('tbody');
         countryCases.forEach(caseData => {
             const row = tbody.append('tr');
@@ -797,7 +824,7 @@ function renderInfoBoxContent() {
             // .on('mouseout', function() {
             //     hideTooltip();
             // });
-            
+
             columnsToShow.forEach(col => {
                 row.append('td').text(caseData[col] || 'N/A');
             });
@@ -815,11 +842,11 @@ function updateMap() {
     const selectedYear = yearSlider.property('value');
     yearLabel.text(selectedYear);
     let filteredCases = allCasesData.filter(d => d['Filing Year'] <= selectedYear);
-    
+
     if (activeStatusFilters.size > 0) {
         filteredCases = filteredCases.filter(d => activeStatusFilters.has(d.Status));
     }
-    
+
     if (activeCategoryFilters.size > 0) {
         filteredCases = filteredCases.filter(d => {
             const issueText = d['Extracted Climate Issue']?.toLowerCase() || '';
@@ -833,28 +860,84 @@ function updateMap() {
         const count = caseCountsMap.get(country.properties.name) || 0;
         country.properties.caseCount = count;
     });
-    applyCaseStyles();
-    renderInfoBoxContent(); 
+    updateCountryStyles();
+    renderInfoBoxContent();
 }
-function applyCaseStyles() {
+
+function updateCountryStyles() {
+    // Clear existing gradients from previous renders
+    defs.selectAll('linearGradient').remove();
+
     countryPaths.selectAll('path')
-        .attr('class', d => d.properties.caseCount > 0 ? 'land interactive' : 'land non-interactive')
-        .style('fill', d => {
-            if (d.properties.caseCount > 0) return caseColorScale(d.properties.caseCount);
-            return '#1b1b1b2c';
-        })
+        .each(function(d) {
+            const countryPath = d3.select(this);
+            const caseCount = d.properties.caseCount || 0;
+            const disasterCount = d.properties.disasterCount || 0;
+            
+            let fillStyle = '#1b1b1b2c'; // Default grey fill
+
+            if (isCasesLayerVisible && isDisasterLayerVisible) {
+                if (caseCount > 0 && disasterCount > 0) {
+                    const gradientId = `grad-${d.id}`;
+                    const gradient = defs.append('linearGradient')
+                        .attr('id', gradientId)
+                        .attr('x1', '0%').attr('y1', '0%')
+                        .attr('x2', '100%').attr('y2', '100%'); // Diagonal gradient
+
+                    gradient.append('stop')
+                        .attr('offset', '50%')
+                        .attr('stop-color', caseColorScale(caseCount));
+                    
+                    gradient.append('stop')
+                        .attr('offset', '50%')
+                        .attr('stop-color', disasterCountColorScale(disasterCount));
+                    
+                    fillStyle = `url(#${gradientId})`;
+
+                } else if (caseCount > 0) {
+                    fillStyle = caseColorScale(caseCount);
+                } else if (disasterCount > 0) {
+                    fillStyle = disasterCountColorScale(disasterCount);
+                }
+            } else if (isCasesLayerVisible) {
+                if (caseCount > 0) {
+                    fillStyle = caseColorScale(caseCount);
+                }
+            } else if (isDisasterLayerVisible) {
+                if (disasterCount > 0) {
+                    fillStyle = disasterCountColorScale(disasterCount);
+                }
+            }
+
+            countryPath.style('fill', fillStyle);
+        });
+
+    // Update common attributes and event handlers for all paths
+    countryPaths.selectAll('path')
+        .attr('class', d => (d.properties.caseCount > 0 && isCasesLayerVisible) || (d.properties.disasterCount > 0 && isDisasterLayerVisible) ? 'land interactive' : 'land non-interactive')
         .on('click', (event, d) => {
-            if (d.properties.caseCount === 0) { 
-                event.stopPropagation(); 
-                return; 
+            const hasData = (d.properties.caseCount > 0 && isCasesLayerVisible) || (d.properties.disasterCount > 0 && isDisasterLayerVisible);
+            if (!hasData) {
+                event.stopPropagation();
+                return;
             }
             event.stopPropagation();
             hideTooltip();
             flyTo(d.properties.name);
         })
         .on('mouseover', (event, d) => {
-            if (!d.properties.caseCount || d.properties.caseCount === 0) return;
-            tooltip.html(`<strong>${d.properties.name}</strong><br/>${d.properties.caseCount} cases`)
+            const hasCases = d.properties.caseCount > 0 && isCasesLayerVisible;
+            const hasDisasters = d.properties.disasterCount > 0 && isDisasterLayerVisible;
+            if (!hasCases && !hasDisasters) return;
+
+            let tooltipHtml = `<strong>${d.properties.name}</strong>`;
+            if (hasCases) {
+                tooltipHtml += `<br/>${d.properties.caseCount} cases`;
+            }
+            if (hasDisasters) {
+                tooltipHtml += `<br/>${d.properties.disasterCount} disasters`;
+            }
+            tooltip.html(tooltipHtml)
                 .classed('invisible', false).classed('opacity-0', false).classed('opacity-100', true).style('z-index', 1000);
         })
         .on('mousemove', (event) => {
@@ -863,16 +946,7 @@ function applyCaseStyles() {
         })
         .on('mouseout', hideTooltip);
 }
-function resetCountryStyles() {
-    countryPaths.selectAll('path')
-        .attr('class', 'land non-interactive')
-        .style('fill', '#1b1b1b2c')
-        .on('click', null)
-        .on('mouseover', null)
-        .on('mousemove', null)
-        .on('mouseout', null);
-    hideTooltip();
-}
+
 function toggleCasesLayer() {
     stopAttractorLoop();
     d3.select('#toggle-cases-btn').classed('no-animation', true);
@@ -896,7 +970,7 @@ function toggleCasesLayer() {
                 areCasesLoaded = true;
                 const maxCases = d3.max(d3.rollup(allCasesData, v => v.length, d => d.Jurisdictions).values());
                 caseColorScale = d3.scaleLog().domain([1, maxCases]).range(['#ff7c7c8c', '#eb0000c7']);
-                
+
                 if (activeRasterLayerId !== 'burn' && activeRasterLayerId !== 'temperature' && activeRasterLayerId !== 'emission' && activeRasterLayerId !== 'seaLevel') {
                     const years = allCasesData.map(d => +d['Filing Year']);
                     const minYear = d3.min(years);
@@ -905,30 +979,203 @@ function toggleCasesLayer() {
                 }
                 updateMap();
                 updateTimeline(allCasesData);
-                createAndUpdateLegends(); 
+                createAndUpdateLegends();
             }).catch(error => {
                 console.error("Error loading case data:", error);
                 isCasesLayerVisible = false;
             });
         }
     } else {
-        resetCountryStyles();
+        countries.forEach(c => c.properties.caseCount = 0); // Reset case count data
+        updateCountryStyles();
         timelineContainer.style('visibility', 'hidden');
         timelineDetailPanel.classed('visible', false);
-        if (!activeRasterLayerId) {
+        if (!activeRasterLayerId && !isDisasterLayerVisible) {
             sliderContainer.style('visibility', 'hidden');
-        } else {
+        } else if (activeRasterLayerId) {
             const layer = rasterLayers[activeRasterLayerId];
-             if(layer.dataCache) {
+            if (layer.dataCache) {
                 const yearRange = { min: 2015, max: 2025 };
                 yearSlider.attr('min', yearRange.min).attr('max', yearRange.max);
                 yearLabel.text(yearSlider.property('value'));
-             }
+            }
         }
         createAndUpdateLegends();
     }
     updateLegendVisibility();
 }
+
+
+// --- NEW DISASTER LAYER FUNCTIONS ---
+
+// This helper function updates the position of disaster dots during zoom/drag events.
+function updateDisasterDotsPosition() {
+    disasterLayer.selectAll('circle')
+        .attr('transform', d => {
+            const p = projection([d.Longitude, d.Latitude]);
+            if (p) {
+                // Hides dots that are on the far side of the globe
+                const [x, y] = p;
+                const [cx, cy] = projection.translate();
+                const distance = d3.geoDistance([d.Longitude, d.Latitude], projection.invert([cx, cy]));
+                if (distance > Math.PI / 2) {
+                    return 'translate(-100,-100)'; // Effectively hide it
+                }
+                return `translate(${x}, ${y})`;
+            }
+            return 'translate(-100,-100)'; // Hide if not projectable
+        });
+}
+
+// This function processes and renders the disaster data as dots on the map.
+function renderDisasterDots(filteredDisasters) {
+    if (!isDisasterLayerVisible || !areDisastersLoaded) return;
+
+    // Define the color scale for disaster types
+    const disasterTypes = ['Drought', 'Flood', 'Extreme temperature', 'Storm', 'Wildfire', 'Mass movement (wet)', 'Mass movement (dry)', 'Glacial lake outburst flood'];
+    // Colorblind-friendly palette
+    const colors = ['#e69f00', '#56b4e9', '#d55e00', '#009e73', '#cc79a7', '#0072b2', '#f0e442', '#999999'];
+    disasterColorScale = d3.scaleOrdinal().domain(disasterTypes).range(colors);
+
+    // Since we plot each disaster individually, we can use a fixed radius.
+    const radius = 4;
+
+    // Bind data and draw circles
+    disasterLayer.selectAll('circle')
+        .data(filteredDisasters, d => d['Dis No']) // Use filtered data and a unique ID
+        .join('circle')
+        .attr('r', radius)
+        .attr('fill', d => disasterColorScale(d['Disaster Type']))
+        .attr('fill-opacity', 0.7)
+        .attr('stroke', 'rgba(255, 255, 255, 0.8)')
+        .attr('stroke-width', 0.5)
+        .style('cursor', 'pointer')
+        .on('mouseover', (event, d) => {
+            tooltip.html(`<strong>${d['Disaster Type']}</strong><br/>${d.Location || d.Country}<br/>Year: ${d['Start Year']}`)
+                .classed('invisible', false).classed('opacity-0', false).classed('opacity-100', true);
+        })
+        .on('mousemove', (event) => {
+            const [x, y] = d3.pointer(event, mapContainer.node());
+            tooltip.style('left', `${x + 15}px`).style('top', `${y}px`);
+        })
+        .on('mouseout', hideTooltip);
+
+    updateDisasterDotsPosition(); // Set the initial position of the dots
+}
+
+function updateDisasterVisualization() {
+    if (!isDisasterLayerVisible || !areDisastersLoaded) return;
+
+    const selectedYear = +yearSlider.property('value');
+    yearLabel.text(selectedYear); // Keep slider label in sync
+
+    const filteredDisasters = allDisasterData.filter(d => +d['Start Year'] <= selectedYear);
+
+    // Update disaster counts on country properties
+    const disasterCountsMap = d3.rollup(filteredDisasters, v => v.length, d => d.Country);
+    countries.forEach(country => {
+        country.properties.disasterCount = disasterCountsMap.get(country.properties.name) || 0;
+    });
+
+    renderDisasterDots(filteredDisasters);
+    updateCountryStyles();
+}
+
+// This is the main function to toggle the disaster layer visibility.
+function toggleDisasterLayer() {
+    stopAttractorLoop();
+    isDisasterLayerVisible = !isDisasterLayerVisible;
+    d3.select('#toggle-disasters-btn').classed('active', isDisasterLayerVisible);
+
+    if (isDisasterLayerVisible) {
+        sliderContainer.style('visibility', 'visible');
+        disasterLayer.style('visibility', 'visible');
+
+        if (areDisastersLoaded) {
+            if (!isCasesLayerVisible && !activeRasterLayerId) {
+                yearSlider.attr('min', 2000).attr('max', 2025);
+                yearLabel.text(yearSlider.property('value'));
+            }
+            updateDisasterVisualization();
+            createAndUpdateLegends();
+        } else {
+            // First time loading the data
+            d3.csv(disasterDataUrl).then(data => {
+                const allowedDisasterTypes = new Set(['Drought', 'Flood', 'Extreme temperature', 'Storm', 'Wildfire', 'Mass movement (wet)', 'Mass movement (dry)', 'Glacial lake outburst flood']);
+
+                // Filter for allowed types and entries with valid coordinates
+                allDisasterData = data.filter(d =>
+                    // d.Latitude && d.Longitude && allowedDisasterTypes.has(d['Disaster Type'])
+                    allowedDisasterTypes.has(d['Disaster Type'])
+                );
+                
+                areDisastersLoaded = true;
+                
+                // Create color scale for disaster counts
+                const disasterCountsByCountry = d3.rollup(allDisasterData, v => v.length, d => d.Country);
+                const maxDisasters = d3.max(disasterCountsByCountry.values());
+                disasterCountColorScale = d3.scaleLog().domain([1, maxDisasters]).range(['#d0d1e6', '#ff5e00ff']);
+
+                if (!isCasesLayerVisible && !activeRasterLayerId) {
+                    yearSlider.attr('min', 2000).attr('max', 2025).attr('value', 2025);
+                    yearLabel.text(2025);
+                }
+
+                updateDisasterVisualization();
+                createAndUpdateLegends();
+
+            }).catch(error => {
+                console.error("Error loading disaster data:", error);
+                isDisasterLayerVisible = false; // Revert state on error
+                disasterLayer.style('visibility', 'hidden');
+                d3.select('#toggle-disasters-btn').classed('active', false);
+            });
+        }
+    } else {
+        disasterLayer.style('visibility', 'hidden');
+        countries.forEach(c => c.properties.disasterCount = 0); // Reset disaster count data
+        updateCountryStyles();
+        
+        if (!isCasesLayerVisible && !activeRasterLayerId) {
+            sliderContainer.style('visibility', 'hidden');
+        }
+        createAndUpdateLegends();
+    }
+    updateLegendVisibility();
+}
+
+// NEW: Function to create the disaster legend
+function createDisasterLegend() {
+    if (!disasterColorScale) return;
+
+    const group = legendItems.append('div').attr('id', 'disaster-legend-group');
+    group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white mt-2').text('Disaster Types');
+
+    const legendData = disasterColorScale.domain();
+    const legendItemsElements = group.selectAll('.legend-item')
+        .data(legendData)
+        .join('div')
+        .attr('class', 'legend-item flex items-center mb-1');
+
+    legendItemsElements.append('div')
+        .attr('class', 'w-4 h-4 mr-2 rounded-full') // Circle to match dots
+        .style('background-color', d => disasterColorScale(d));
+
+    legendItemsElements.append('span')
+        .attr('class', 'text-white text-xs')
+        .text(d => d);
+}
+
+function createDisasterCountLegend() {
+    if (!disasterCountColorScale) return;
+
+    const group = legendItems.append('div').attr('id', 'disaster-count-legend-group');
+    group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white mt-2').text('Disaster Count');
+    const legendData = [1, 10, 50, 200]; // Example values, can be adjusted
+    const legendItemsElements = group.selectAll('.legend-item').data(legendData).join('div').attr('class', 'legend-item flex items-center mb-1');
+    legendItemsElements.append('div').attr('class', 'w-4 h-4 mr-2').style('background-color', d => disasterCountColorScale(d));
+    legendItemsElements.append('span').attr('class', 'text-white text-xs').text(d => `${d}${d === 200 ? '+' : ''}`);
+};
 
 function createAndUpdateLegends() {
     clearLegend();
@@ -938,9 +1185,14 @@ function createAndUpdateLegends() {
         createClimateRasterLegend(layer, colorScale);
     }
     if (isCasesLayerVisible) {
-        if (caseColorScale) { 
+        if (caseColorScale) {
             createClimateCasesLegend();
         }
+    }
+    // ADDED: Show disaster legend if layer is active
+    if (isDisasterLayerVisible) {
+        createDisasterLegend();
+        createDisasterCountLegend();
     }
 }
 
@@ -955,9 +1207,9 @@ function destroyClimateLayer() {
     }
 }
 const drag = d3.drag()
-    .on('start', () => { 
+    .on('start', () => {
         stopAttractorLoop();
-        hideInfoBox(); 
+        hideInfoBox();
         hideTooltip();
         destroyClimateLayer();
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '0.3');
@@ -966,15 +1218,15 @@ const drag = d3.drag()
     .on('drag', (event) => {
         const currentRotation = projection.rotate();
         const sensitivity = 0.25;
-        const newRotation = [ currentRotation[0] + event.dx * sensitivity, currentRotation[1] - event.dy * sensitivity ];
+        const newRotation = [currentRotation[0] + event.dx * sensitivity, currentRotation[1] - event.dy * sensitivity];
         projection.rotate(newRotation);
         redraw();
     })
     .on('end', () => {
         if (climateCanvas && activeRasterLayerId) climateCanvas.style('opacity', '1');
         if (isWindLayerVisible && windDataCache) {
-             windAnimator.updateProjection(projection); 
-             windAnimator.start(windDataCache);
+            windAnimator.updateProjection(projection);
+            windAnimator.start(windDataCache);
         }
     });
 
@@ -1038,13 +1290,18 @@ function createElevationLegend() {
 
 function redraw() {
     countryPaths.selectAll('path').attr('d', pathGenerator);
-    
+
     if (isClimateLayerVisible && climateContourData) {
         climateLayer.selectAll('path').attr('d', pathGenerator);
     }
-    
+
+    // UPDATE: Redraw disaster dots on pan/zoom
+    if (isDisasterLayerVisible && areDisastersLoaded) {
+        updateDisasterDotsPosition();
+    }
+
     g.selectAll('.sphere, .graticule').attr('d', pathGenerator);
-    
+
     if (activeRasterLayerId && rasterLayers[activeRasterLayerId].isVisible) {
         debouncedRenderClimateRaster();
     }
@@ -1080,36 +1337,31 @@ function toggleClimateLayer() {
 
 
 function flyTo(countryName) {
-    if (!isCasesLayerVisible) {
-        d3.select('#toggle-cases-btn').dispatch('click');
+    if (!areCasesLoaded && isCasesLayerVisible) { // Ensure data is loaded before flying
         setTimeout(() => flyTo(countryName), 100);
         return;
     }
 
-    activeCountryName = countryName; 
+    activeCountryName = countryName;
     const targetCountry = countries.find(c => c.properties.name === countryName);
-    
+
     if (!targetCountry) {
         console.error(`Could not find target country: ${countryName}`);
         return;
     }
-
-    if (typeof caseColorScale === 'function') {
-        countryPaths.selectAll('.active-country')
-          .classed('active-country', false)
-          .style('fill', d => caseColorScale(d.properties.caseCount));
-    } else {
-        countryPaths.selectAll('.active-country').classed('active-country', false);
-    }
-
+    
+    // Deselect any previously active country
+    countryPaths.selectAll('.active-country').classed('active-country', false);
+    // Select the new one
     countryPaths.selectAll('path')
       .filter(d => d.properties.name === countryName)
-      .classed('active-country', true)
-      .style('fill', null);
+      .classed('active-country', true);
 
-    // Filter cases for the selected country and update the timeline
-    const countryCases = allCasesData.filter(d => d.Jurisdictions === countryName);
-    updateTimeline(countryCases);
+    if (isCasesLayerVisible) {
+        const countryCases = allCasesData.filter(d => d.Jurisdictions === countryName);
+        updateTimeline(countryCases);
+    }
+
 
     const centroid = d3.geoCentroid(targetCountry);
     const targetRotation = [-centroid[0], -centroid[1]];
@@ -1122,23 +1374,23 @@ function flyTo(countryName) {
         .tween('zoomAndRotate', () => {
             const r = d3.interpolate(projection.rotate(), targetRotation);
             const s = d3.interpolate(projection.scale(), baseScale * 1.5);
-            return function(t) { projection.rotate(r(t)).scale(s(t)); redraw(); };
+            return function (t) { projection.rotate(r(t)).scale(s(t)); redraw(); };
         })
         .transition()
         .duration(1000)
         .tween('zoomIn', () => {
             const s = d3.interpolate(projection.scale(), targetScale);
-            return function(t) { projection.scale(s(t)); redraw(); };
+            return function (t) { projection.scale(s(t)); redraw(); };
         })
         .on('end', () => {
             infoCountryName.text(targetCountry.properties.name);
-            renderInfoBoxContent(); 
+            renderInfoBoxContent();
 
             infoBox.classed('invisible', false)
-                   .classed('opacity-0', false)
-                   .classed('opacity-100', true)
-                   .style('pointer-events', 'auto');
-            
+                .classed('opacity-0', false)
+                .classed('opacity-100', true)
+                .style('pointer-events', 'auto');
+
             const finalTransform = d3.zoomIdentity.scale(projection.scale() / baseScale);
             svg.call(zoom.transform, finalTransform);
 
@@ -1185,8 +1437,10 @@ async function downloadSVG() {
 d3.select('#toggle-climate-raster-btn').on('click', toggleEmissionLayer);
 d3.select('#toggle-climate-btn').on('click', toggleTempLayer);
 d3.select('#toggle-cases-btn').on('click', toggleCasesLayer);
-d3.select('#toggle-burn-btn').on('click', toggleBurnLayer); 
+d3.select('#toggle-burn-btn').on('click', toggleBurnLayer);
 d3.select('#toggle-sea-level-btn').on('click', toggleSeaLevelLayer);
+// NEW: Add event listener for the disaster button
+d3.select('#toggle-disasters-btn').on('click', toggleDisasterLayer);
 
 
 yearSlider.on('input', () => {
@@ -1195,8 +1449,13 @@ yearSlider.on('input', () => {
 
     if (isCasesLayerVisible) {
         updateMap();
-    } 
-    if (activeRasterLayerId === 'burn') { 
+    }
+
+    if (isDisasterLayerVisible) {
+        updateDisasterVisualization();
+    }
+
+    if (activeRasterLayerId === 'burn') {
         loadAndRenderBurnData(selectedYear);
     } else if (activeRasterLayerId === 'temperature') {
         loadAndRenderTemperatureData(selectedYear);
@@ -1224,7 +1483,7 @@ function searchAndFly() {
 // Helper function to render the list of countries
 function renderAutocompleteResults(countryList) {
     autocompleteResults.html(''); // Clear previous results
-    
+
     // Sort the list alphabetically for better usability
     countryList.sort((a, b) => a.properties.name.localeCompare(b.properties.name));
 
@@ -1247,7 +1506,7 @@ function startAttractorLoop() {
     rotationTimer = d3.timer(elapsed => {
         const rotate = projection.rotate();
         const speed = 0.1; // Degrees per millisecond
-        projection.rotate([rotate[0] + speed , rotate[1], rotate[2]]);
+        projection.rotate([rotate[0] + speed, rotate[1], rotate[2]]);
         redraw();
     });
 }
@@ -1263,15 +1522,15 @@ function stopAttractorLoop() {
 // The search button's main function remains the same
 countrySearchBtn.on('click', searchAndFly);
 
-d3.selectAll('.filter-group-header').on('click', function() {
+d3.selectAll('.filter-group-header').on('click', function () {
     const header = d3.select(this);
     const content = d3.select(this.nextElementSibling);
     const isExpanded = header.classed('expanded');
-    
+
     header.classed('expanded', !isExpanded);
     content.style('display', isExpanded ? 'none' : 'block');
 });
-d3.selectAll('input[name="status"]').on('change', function() {
+d3.selectAll('input[name="status"]').on('change', function () {
     const checkbox = d3.select(this);
     const status = checkbox.property('value');
     const isChecked = checkbox.property('checked');
@@ -1283,7 +1542,7 @@ d3.selectAll('input[name="status"]').on('change', function() {
     updateMap();
 });
 
-d3.selectAll('input[name="category"]').on('change', function() {
+d3.selectAll('input[name="category"]').on('change', function () {
     const checkbox = d3.select(this);
     const keywords = checkbox.property('value').split('|');
     const isChecked = checkbox.property('checked');
@@ -1295,7 +1554,7 @@ d3.selectAll('input[name="category"]').on('change', function() {
             activeCategoryFilters.delete(keyword);
         }
     });
-    
+
     updateMap();
 });
 
@@ -1309,7 +1568,7 @@ function setupSearchInteractions() {
     if (keyboard) {
         // --- MODE 1: KEYBOARD AVAILABLE ---
         countrySearchInput.attr('readonly', null); // Ensure input is not read-only
-        
+
         countrySearchInput.on('input', (event) => {
             const inputText = event.target.value.toLowerCase();
             if (inputText.length > 0) {
@@ -1335,9 +1594,9 @@ function setupSearchInteractions() {
             event.stopPropagation();
             const isListVisible = autocompleteResults.node().hasChildNodes();
             if (isListVisible) {
-                 autocompleteResults.html('');
+                autocompleteResults.html('');
             } else {
-                 renderAutocompleteResults(countries);
+                renderAutocompleteResults(countries);
             }
         });
     }
@@ -1354,7 +1613,7 @@ timelineDetailClose.on('click', () => {
 d3.select('#toggle-wind-btn').on('click', toggleWindLayer);
 
 // Expose a function to the global window object to control the mode from the console
-window.setKeyboardMode = function(hasKeyboard) {
+window.setKeyboardMode = function (hasKeyboard) {
     keyboard = !!hasKeyboard; // Ensure it's a true/false value
     console.log(`Keyboard mode has been set to: ${keyboard}`);
     setupSearchInteractions(); // Re-apply the correct event listeners
@@ -1365,3 +1624,4 @@ window.setKeyboardMode = function(hasKeyboard) {
 
 // Initial setup when the script loads for the first time
 setupSearchInteractions();
+

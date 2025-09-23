@@ -735,7 +735,7 @@ main {
 /* New container for the button and popup to manage positioning and animation */
 .chat-widget-container {
   position: fixed;
-  top: 50%;
+  top: 39.5%;
   left: 0;
   transform: translateY(-50%) translateX(-50px); /* Start with the popup hidden off-screen */
   transition: transform 0.4s ease-in-out;
