@@ -59,4 +59,6 @@ qgis*.qmd
 *.tif
 folium_map.html
 *.qgz
+.env
+.HMAC
 

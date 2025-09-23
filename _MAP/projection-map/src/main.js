@@ -738,7 +738,7 @@ function updateTimeline(caseData) {
     const svg = timelineSvg
         .append('g')
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
-
+    
     const x = d3.scaleLinear()
         .domain([1986, 2025])
         .range([0, width]);
@@ -750,11 +750,43 @@ function updateTimeline(caseData) {
         .attr('transform', `translate(0, ${height})`)
         .call(xAxis);
 
+    // --- NEW: Calculate cumulative cases over the years ---
+    const countsByYear = d3.rollup(caseData, v => v.length, d => +d['Filing Year']);
+    const sortedYears = Array.from(countsByYear.keys()).sort(d3.ascending);
+
+    let cumulativeCount = 0;
+    const cumulativeData = sortedYears
+        .filter(year => year >= 1986 && year <= 2025) // Ensure data is within the domain
+        .map(year => {
+            cumulativeCount += countsByYear.get(year);
+            return { year: year, count: cumulativeCount };
+        });
+
+    // --- NEW: Create a Y scale for the cumulative count ---
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(cumulativeData, d => d.count)])
+        .range([height, 0]);
+
+    // --- NEW: Define and draw the area graph ---
+    const area = d3.area()
+        .x(d => x(d.year))
+        .y0(height)
+        .y1(d => y(d.count))
+        .curve(d3.curveMonotoneX); // Smooths the line
+
+    svg.append("path")
+        .datum(cumulativeData)
+        .attr("fill", "rgba(255, 38, 38, 0.18)") // A semi-transparent red
+        // .attr("stroke", "rgba(255, 124, 124, 0.5)")
+        .attr("stroke-width", 1.5)
+        .attr("d", area);
+    // --- End of new code ---
+
     svg.selectAll('.timeline-dot')
         .data(caseData.filter(d => d['Filing Year'] >= 1986 && d['Filing Year'] <= 2025))
         .join('circle')
         .attr('class', 'timeline-dot')
-        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50))
+        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 50 - 20)) // Reduced random scatter
         .attr('cy', height / 2 + (Math.random() * 40 - 20))
         .attr('r', 3)
         .on('click', (event, d) => {
@@ -769,7 +801,6 @@ function updateTimeline(caseData) {
                     <p>${d.Description || 'Not available.'}</p>
                 </div>
             `);
-            // flyTo(d.Jurisdictions);
         });
 }
 
