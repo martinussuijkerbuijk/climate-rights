@@ -5,13 +5,28 @@ import { WindAnimator } from './wind.js'; // <-- IMPORT YOUR NEW MODULE
 
 // --- Map Configuration ---
 let keyboard = false;
-const width = 2200;
-const height = 1470;
+const width = 2010;
+const height = 1280;
 const worldJsonUrl = 'https://unpkg.com/world-atlas@2/countries-110m.json';
 const caseDataUrl = 'CASES_COMBINED_status.csv'; 
 const climateContoursUrl = 'sea_level_contours_qgis.topojson'; 
 const baseScale = 200; 
 const windDataUrl = 'current-wind-surface-level-gfs-1.0.json'
+
+// --- For chat WIndow ---
+const chatWidget = document.getElementById('chatWidget');
+// --- CHAT FUNCTIONALITY SCRIPT ---
+const chatMessages = document.getElementById('chatMessages');
+const promptInput = document.getElementById('promptInput');
+const sendButton = document.getElementById('sendButton');
+const closeChatButton = document.getElementById('chatCloseBtn');
+const toggleChatButton = document.getElementById('chatToggleBtn');
+const ChatFormButton = document.getElementById('chatForm');
+
+const originalButtonContent = sendButton.innerHTML;
+
+// Generate a unique session ID for this visit
+const sessionId = crypto.randomUUID(); // <-- NEW
 
 
 // --- Add new state variables ---
@@ -22,10 +37,6 @@ let windDataCache = null;
 // NEW: State for attractor loop
 let userHasInteracted = false;
 let rotationTimer = null;
-
-// NEW: Inactivity timer variables
-let inactivityTimer = null;
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
 
 // --- DOM Selections ---
@@ -61,7 +72,7 @@ const MIN_RENDER_INTERVAL = 100;
 const rasterLayers = {
     emission: {
         id: 'emission',
-        title: 'NO2 Emission Data | mol/m^2',
+        title: 'Emission Data',
         domain: [0.00, 0.21, 0.41, 0.62, 0.82, 1.03, 1.24, 1.44, 1.65, 1.85, 2.06],
         colors: ['black', '#1f1f1fff', '#696969ff', '#72838bff', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b', '#a50f6bff', '#d4009fff'],
         data: null,
@@ -70,7 +81,7 @@ const rasterLayers = {
     },
     temperature: {
         id: 'temperature',
-        title: 'Mean Temperature (July) | °C',
+        title: 'Temperature Anomaly',
         domain: [-75., -52.5, -29.8, -7.2, 15.4, 38., 61.],
         colors: ['#34258fff', '#681a72ff', '#9d9e48ff', '#ccb21fff', '#e09524ff', '#eb1f00ff', '#570000ff'],
         data: null,
@@ -88,7 +99,7 @@ const rasterLayers = {
     },
     seaLevel: {
         id: 'seaLevel',
-        title: 'Sea Level Anomaly | M',
+        title: 'Sea Level Anomaly',
         domain: [-1.5, - 1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1., 1.25],
         colors: ['#053061', '#2166ac', '#4393c3', '#c197f8ff', '#d650ffff', '#e2abd6ff', '#9b9b9bff', '#f4a582', '#d3887cff', '#d15353ff','#f14e61ff', '#ff001eff'],
         data: null,
@@ -96,19 +107,96 @@ const rasterLayers = {
         dataCache: {}
     }
 };
-
-// NEW: Descriptions for raster layer tooltips
-const rasterLayerDescriptions = {
-    seaLevel: "Sea surface height above the geoid computed as the sum of the sea level anomaly with the mean dynamic topography. Daily fields are provided.",
-    emission: "This layer displays the concentration of tropospheric Nitrogen Dioxide (NO2), a key indicator of air pollution primarily from industrial activities and vehicle emissions.",
-    burn: "This layer illustrates the cumulative burned area throughout the selected year. The color indicates the day of the year the fire was detected, providing a timeline of fire events.",
-    temperature: "This layer represents the surface temperature through out July on an 8-day average. Red areas are hotter regions, and blue areas are cooler."
-};
-
-
 let activeRasterLayerId = null; 
 let climateCanvas = null;
 let climateCanvasContext = null;
+
+// --- Chat Functions --- BEGIN
+// --- CHAT WIDGET VISIBILITY ---
+function toggleChat() {
+    chatWidget.classList.toggle('open');
+}
+
+// Attach event listeners for opening and closing the chat
+if (toggleChatButton) {
+    toggleChatButton.addEventListener('click', toggleChat);
+}
+if (closeChatButton) {
+    closeChatButton.addEventListener('click', toggleChat);
+}
+
+async function sendPrompt(event) {
+    event.preventDefault(); // Prevents the form from reloading the page
+    
+    const promptText = promptInput.value.trim();
+    if (!promptText) return;
+
+    // --- Add User's Message to Chat ---
+    addMessage(promptText, 'user-message');
+    promptInput.value = ''; // Clear the input field
+
+    // --- Show Loader and Disable Button ---
+    sendButton.innerHTML = '<div class="loader"></div>';
+    sendButton.disabled = true;
+
+    // --- Prepare and Send Request ---
+    const n8nWebhookUrl = 'https://martinus-suijkerbuijk.app.n8n.cloud/webhook/climate-cases'; // <-- ### YOUR N8N URL ###
+    
+    // Construct the data object to send, now including the sessionId
+    const dataToSend = { 
+        prompt: promptText,
+        sessionId: sessionId // <-- MODIFIED
+    };
+
+    try {
+        const response = await fetch(n8nWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataToSend),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        // --- Add AI's Response to Chat ---
+        if (Array.isArray(data) && data.length > 0 && data[0].output !== undefined) {
+          // MODIFIED: Access the output from the first element
+          addMessage(data[0].output, 'ai-message');
+        } else {
+            addMessage('Received an unexpected response format.', 'ai-message');
+        }
+
+    } catch (error) {
+        console.error('Error sending prompt or processing response:', error);
+        addMessage(`An error occurred: ${error.message}`, 'ai-message');
+    } finally {
+        // --- Restore Button ---
+        sendButton.innerHTML = originalButtonContent;
+        sendButton.disabled = false;
+    }
+}
+
+// Attach event listener for form submission
+if (ChatFormButton) {
+    ChatFormButton.addEventListener('submit', sendPrompt);
+}
+
+function addMessage(content, className) {
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', className);
+    messageDiv.innerHTML = content; // Using innerHTML to render any HTML from the response
+    chatMessages.appendChild(messageDiv);
+
+    // Scroll to the latest message
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// --- Chat Functions --- END
+
 
 function createClimateCanvas() {
     climateCanvas = d3.select('#map-container')
@@ -127,34 +215,6 @@ function createClimateCanvas() {
     climateCanvasContext = climateCanvas.node().getContext('2d');
     climateCanvasContext.imageSmoothingEnabled = false; 
     climateCanvasContext.globalCompositeOperation = 'source-over';
-}
-
-
-// NEW: Inactivity timer functions
-function resetToAttractorScreen() {
-    console.log("Inactivity detected. Resetting to the main screen.");
-    window.location.reload();
-
-}
-
-function resetTimer() {
-    // Clear the previous timer
-    clearTimeout(inactivityTimer);
-    // Start a new timer
-    inactivityTimer = setTimeout(resetToAttractorScreen, INACTIVITY_TIMEOUT);
-}
-
-function setupInactivityListeners() {
-    // List of events that count as user activity
-    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'];
-    
-    // Add a listener for each event that resets the timer
-    activityEvents.forEach(eventName => {
-        window.addEventListener(eventName, resetTimer, true);
-    });
-    
-    // Start the timer for the first time
-    resetTimer();
 }
 
 function debouncedRenderClimateRaster() {
@@ -229,30 +289,8 @@ function renderClimateRasterCanvas() {
 
 
 function createClimateRasterLegend(layer, colorScale) {
-    const group = legendItems.append('div')
-        .attr('id', 'raster-legend-group')
-        .attr('class', 'cursor-help') // Add help cursor to the whole group
-        .on('mouseover', function(event) {
-            const description = rasterLayerDescriptions[layer.id] || 'No description available.';
-            tooltip.html(description)
-                .classed('invisible', false)
-                .classed('opacity-0', false)
-                .classed('opacity-100', true)
-                .style('max-width', '350px') // Set max width for the tooltip
-                .style('z-index', 1001);
-        })
-        .on('mousemove', function(event) {
-            const [x, y] = d3.pointer(event, mapContainer.node());
-            tooltip.style('left', `${x + 15}px`).style('top', `${y}px`);
-        })
-        .on('mouseout', function() {
-            hideTooltip();
-        });
-
-    // Append the title without event listeners
-    group.append('div')
-        .attr('class', 'text-sm font-semibold mb-2 text-white')
-        .text(layer.title);
+    const group = legendItems.append('div').attr('id', 'raster-legend-group');
+    group.append('div').attr('class', 'text-sm font-semibold mb-2 text-white').text(layer.title);
     
     if (layer.id === 'burn') {
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -666,8 +704,8 @@ function toggleWindLayer() {
 function updateTimeline(caseData) {
     timelineSvg.selectAll('*').remove();
     const timelineHeight = 160;
-    const timelineWidth = 1200;
-    const margin = { top: 20, right: 0, bottom: 30, left: 40 };
+    const timelineWidth = timelineContainer.node().getBoundingClientRect().width;
+    const margin = { top: 20, right: 40, bottom: 30, left: 40 };
     const width = timelineWidth - margin.left - margin.right;
     const height = timelineHeight - margin.top - margin.bottom;
 
@@ -686,17 +724,43 @@ function updateTimeline(caseData) {
         .attr('transform', `translate(0, ${height})`)
         .call(xAxis);
 
+    // --- NEW: Calculate cumulative cases over the years ---
+    const countsByYear = d3.rollup(caseData, v => v.length, d => +d['Filing Year']);
+    const sortedYears = Array.from(countsByYear.keys()).sort(d3.ascending);
+
+    let cumulativeCount = 0;
+    const cumulativeData = sortedYears
+        .filter(year => year >= 1986 && year <= 2025) // Ensure data is within the domain
+        .map(year => {
+            cumulativeCount += countsByYear.get(year);
+            return { year: year, count: cumulativeCount };
+        });
+
+    // --- NEW: Create a Y scale for the cumulative count ---
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(cumulativeData, d => d.count)])
+        .range([height, 0]);
+
+    // --- NEW: Define and draw the area graph ---
+    const area = d3.area()
+        .x(d => x(d.year))
+        .y0(height)
+        .y1(d => y(d.count))
+        .curve(d3.curveMonotoneX); // Smooths the line
+
+    svg.append("path")
+        .datum(cumulativeData)
+        .attr("fill", "rgba(255, 124, 124, 0.2)") // A semi-transparent red
+        .attr("stroke", "rgba(255, 124, 124, 0)")
+        .attr("stroke-width", 1.5)
+        .attr("d", area);
+    // --- End of new code ---
+
     svg.selectAll('.timeline-dot')
         .data(caseData.filter(d => d['Filing Year'] >= 1986 && d['Filing Year'] <= 2025))
         .join('circle')
         .attr('class', 'timeline-dot')
-        .attr('cx', d => {
-            const baseCx = x(+d['Filing Year']);
-            const jitter = (Math.random() * 100 - 50);
-            const finalCx = baseCx + jitter;
-            // Clamp the value to ensure it stays within the visible bounds of the axis
-            return Math.max(0, Math.min(width, finalCx));
-        }) 
+        .attr('cx', d => x(+d['Filing Year']) + (Math.random() * 100 - 50)) // Reduced random scatter
         .attr('cy', height / 2 + (Math.random() * 40 - 20))
         .attr('r', 3)
         .on('click', (event, d) => {
@@ -711,7 +775,6 @@ function updateTimeline(caseData) {
                     <p>${d.Description || 'Not available.'}</p>
                 </div>
             `);
-            // flyTo(d.Jurisdictions);
         });
 }
 
@@ -1334,6 +1397,3 @@ window.setKeyboardMode = function(hasKeyboard) {
 
 // Initial setup when the script loads for the first time
 setupSearchInteractions();
-
-// NEW: Start listening for user inactivity
-setupInactivityListeners();

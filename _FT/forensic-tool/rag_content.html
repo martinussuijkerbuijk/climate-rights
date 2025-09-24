@@ -1,0 +1,22 @@
+<!-- This file contains only the HTML fragment for the RAG interface -->
+<div class="rag-container">
+    <div class="panel">
+        <p class="mb-4 text-gray-400">Ask a question about the climate litigation knowledge graph.</p>
+        <form id="query-form">
+            <div class="form-group">
+                <input type="text" id="query-input" placeholder="e.g., Which jurisdictions have the most climate cases?">
+                <button type="submit" id="query-submit-btn">Ask</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="results-container" class="panel" style="display: none;">
+        <div id="loader" class="loader-container" style="display: none;">
+            <div class="loader"></div>
+            <p>Analyzing the knowledge graph...</p>
+        </div>
+        <div id="response-area">
+            <!-- Results will be injected here -->
+        </div>
+    </div>
+</div>
