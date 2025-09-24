@@ -14,10 +14,10 @@
 <body>
     <div id="app-wrapper">
         <header class="main-header">
-            <div class="flex-shrink-0 flex items-center p-2"><img src="Climate_Rights_Logo-b1-02.png" alt="Logo" class="h-12 w-auto"></div>
+            <div class="flex-shrink-0 flex items-center p-2"><a href="https://climate-rights.org/"><img src="Climate_Rights_Logo-b1-02.png" alt="Logo" class="h-12 w-auto"></a></div>
             <nav class="main-nav">
-                <a href="#" class="nav-item active">Disasters and Climate Litigation</a>
-                <a href="#" class="nav-item ">GraphRAG Investigation</a>
+                <a href="#" id="nav-disasters" class="nav-item active">Disasters and Climate Litigation</a>
+                <a href="#" id="nav-rag" class="nav-item">GraphRAG Investigation</a>
             </nav>
             <div class="date-slider-container">
                 <span id="date-range-label">2000 - 2024</span>
@@ -27,60 +27,69 @@
 
         <div id="content-wrapper">
             <aside id="side-panel">
-                <div class="panel-section">
-                    <h2 class="panel-header">Filters</h2>
-                    <div class="filter-group">
-                        <label for="country-search">Country</label>
-                        <div class="search-container">
-                            <input type="text" id="country-search" placeholder="Search for a country...">
-                            <div id="autocomplete-results"></div>
+                <!-- Wrapper for the original disaster-related side panel content -->
+                <div id="disaster-panel-content">
+                    <div class="panel-section">
+                        <h2 class="panel-header">Filters</h2>
+                        <div class="filter-group">
+                            <label for="country-search">Country</label>
+                            <div class="search-container">
+                                <input type="text" id="country-search" placeholder="Search for a country...">
+                                <div id="autocomplete-results"></div>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <div id="country-map-container"></div>
+                        </div>
+                        <div class="filter-group">
+                            <label for="disaster-type">Disaster Type</label>
+                            <select id="disaster-type">
+                                <option>All Types</option>
+                                <option>Drought</option>
+                                <option>Flood</option>
+                                <option>Storm</option>
+                                <option>Earthquake</option>
+                                <option>Wildfire</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="filter-group">
-                        <div id="country-map-container"></div>
-                    </div>
-                    <div class="filter-group">
-                        <label for="disaster-type">Disaster Type</label>
-                        <select id="disaster-type">
-                            <option>All Types</option>
-                            <option>Drought</option>
-                            <option>Flood</option>
-                            <option>Storm</option>
-                            <option>Earthquake</option>
-                            <option>Wildfire</option>
-                        </select>
+                    <div class="panel-section">
+                        <h2 class="panel-header">Disaster Analysis</h2>
+                        <div class="chart-container">
+                            <canvas id="summaryChart"></canvas>
+                        </div>
                     </div>
                 </div>
-
-                <div class="panel-section">
-                    <h2 class="panel-header">Disaster Analysis</h2>
-                    <div class="chart-container">
-                        <canvas id="summaryChart"></canvas>
+                <!-- Wrapper for the RAG query history, initially hidden -->
+                <div id="rag-panel-content" style="display: none;">
+                    <div class="panel-section">
+                        <h2 class="panel-header">Query History</h2>
+                        <div id="query-history-list" class="query-history-container"></div>
                     </div>
                 </div>
             </aside>
             <main id="main-content">
                 <div id="timeline-panel">
                     <div class="panel-header">EVENT TIMELINE: Philippines</div>
-                    <div class="timelines-wrapper">
+                    <!-- The two wrappers below will be toggled for view switching -->
+                    <div id="disaster-timelines-wrapper" class="timelines-wrapper">
                         <div class="timeline-container-left">
                             <h3 class="timeline-header">
                                 Disasters
                                 <span id="disaster-count-display" class="timeline-count">0</span>
                             </h3>
-                            <div id="disaster-timeline" class="timeline">
-                                <!-- Disaster events will be rendered here by JS -->
-                            </div>
+                            <div id="disaster-timeline" class="timeline"></div>
                         </div>
                         <div class="timeline-container-right">
                              <h3 class="timeline-header">
                                 Climate Cases
                                 <span id="cases-count-display" class="timeline-count">0</span>
                             </h3>
-                            <div id="cases-timeline" class="timeline">
-                                <!-- Case events will be rendered here by JS -->
-                            </div>
+                            <div id="cases-timeline" class="timeline"></div>
                         </div>
+                    </div>
+                    <div id="rag-timelines-wrapper" class="timelines-wrapper" style="display: none;">
+                        <!-- RAG content will be loaded here -->
                     </div>
                 </div>
             </main>
@@ -90,6 +99,167 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"></script>
     <script type="module" src="/src/main.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const navDisasters = document.getElementById('nav-disasters');
+            const navRag = document.getElementById('nav-rag');
+            const dateSliderContainer = document.querySelector('.date-slider-container');
+            const timelinePanelHeader = document.querySelector('#timeline-panel .panel-header');
+            
+            // Get content wrappers
+            const disasterPanelContent = document.getElementById('disaster-panel-content');
+            const ragPanelContent = document.getElementById('rag-panel-content');
+            const disasterTimelinesWrapper = document.getElementById('disaster-timelines-wrapper');
+            const ragTimelinesWrapper = document.getElementById('rag-timelines-wrapper');
+
+            // Changed to store objects: { query: string, response: object }
+            let queryHistory = []; 
+            let ragContentLoaded = false;
+            const originalHeader = timelinePanelHeader.textContent;
+
+            function showDisasterView() {
+                navDisasters.classList.add('active');
+                navRag.classList.remove('active');
+
+                dateSliderContainer.style.display = 'flex';
+                disasterPanelContent.style.display = 'block';
+                ragPanelContent.style.display = 'none';
+                disasterTimelinesWrapper.style.display = 'flex';
+                ragTimelinesWrapper.style.display = 'none';
+                
+                timelinePanelHeader.textContent = originalHeader;
+            }
+
+            function renderQueryHistory() {
+                const historyList = document.getElementById('query-history-list');
+                if (!historyList) return;
+                historyList.innerHTML = ''; 
+                if (queryHistory.length === 0) {
+                    historyList.innerHTML = '<p class="text-muted">Your query history will appear here.</p>';
+                } else {
+                    queryHistory.slice().reverse().forEach(historyItem => {
+                        const item = document.createElement('div');
+                        item.className = 'history-item';
+                        item.textContent = historyItem.query;
+                        // Clicking now displays the cached response directly
+                        item.addEventListener('click', () => {
+                            const queryInput = document.getElementById('query-input');
+                            if(queryInput) queryInput.value = historyItem.query;
+                            displayResults(historyItem.response);
+                        });
+                        historyList.appendChild(item);
+                    });
+                }
+            }
+
+            async function showRagView() {
+                navRag.classList.add('active');
+                navDisasters.classList.remove('active');
+
+                dateSliderContainer.style.display = 'none';
+                disasterPanelContent.style.display = 'none';
+                ragPanelContent.style.display = 'block';
+                disasterTimelinesWrapper.style.display = 'none';
+                ragTimelinesWrapper.style.display = 'flex';
+                
+                timelinePanelHeader.textContent = 'GraphRAG Investigation';
+                renderQueryHistory();
+
+                if (!ragContentLoaded) {
+                    try {
+                        const response = await fetch('rag_content.html');
+                        if (!response.ok) throw new Error(`Failed to load RAG content: ${response.statusText}`);
+                        
+                        ragTimelinesWrapper.innerHTML = await response.text();
+                        initializeRagLogic();
+                        ragContentLoaded = true;
+                    } catch (error) {
+                        console.error(error);
+                        ragTimelinesWrapper.innerHTML = `<div class="p-8"><div class="error-box"><strong>Error:</strong> Could not load the GraphRAG interface.</div></div>`;
+                    }
+                }
+            }
+            
+            navDisasters.addEventListener('click', (e) => {
+                e.preventDefault();
+                showDisasterView();
+            });
+
+            navRag.addEventListener('click', (e) => {
+                e.preventDefault();
+                showRagView();
+            });
+            
+            // This function is now only for displaying, not fetching
+            function displayResults(data) {
+                const resultsContainer = document.getElementById('results-container');
+                const responseArea = document.getElementById('response-area');
+                if (!resultsContainer || !responseArea) return;
+
+                resultsContainer.style.display = 'block';
+                
+                let html = `<div class="response-header"><h2>Response</h2><p>Query Type: <span class="tag">${data.classification.type.toUpperCase()}</span> (Confidence: <strong>${(data.classification.confidence * 100).toFixed(1)}%</strong>)</p></div>`;
+                if (data.answer) html += `<p class="response-answer">${data.answer.replace(/\n/g, '<br>')}</p>`;
+                if (data.context) html += `<div class="context-box"><h3>Retrieved Context</h3><pre>${escapeHtml(data.context)}</pre></div>`;
+                if (data.data && Object.keys(data.data).length > 0) html += `<div class="data-box"><h3>Supporting Data</h3><pre>${escapeHtml(JSON.stringify(data.data, null, 2))}</pre></div>`;
+                responseArea.innerHTML = html;
+            }
+
+            function escapeHtml(unsafe) {
+                return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+            }
+
+            function initializeRagLogic() {
+                const queryForm = document.getElementById('query-form');
+                if (!queryForm) return;
+
+                const queryInput = document.getElementById('query-input');
+                const loader = document.getElementById('loader');
+
+                queryForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const query = queryInput.value.trim();
+                    if (!query) return;
+
+                    // Check if we already have a response for this query
+                    const existingHistoryItem = queryHistory.find(item => item.query === query);
+                    if (existingHistoryItem) {
+                        displayResults(existingHistoryItem.response);
+                        return; // Exit without making an API call
+                    }
+
+                    // If not found in history, fetch from the server
+                    loader.style.display = 'flex';
+                    // Clear previous results while loading
+                    const responseArea = document.getElementById('response-area');
+                    if(responseArea) responseArea.innerHTML = '';
+
+
+                    try {
+                        const response = await fetch('http://10.24.36.19:8080/query', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query }),
+                        });
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        const data = await response.json();
+
+                        // Save the new query and its response to history
+                        queryHistory.push({ query: query, response: data });
+                        renderQueryHistory();
+                        displayResults(data);
+
+                    } catch (error) {
+                        console.error('Error fetching results:', error);
+                        if(responseArea) responseArea.innerHTML = `<div class="error-box"><strong>Error:</strong><span>Could not fetch results. Is the Flask server running?</span></div>`;
+                    } finally {
+                        loader.style.display = 'none';
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
 

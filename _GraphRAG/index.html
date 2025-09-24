@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climate Litigation GraphRAG</title>
+    <!-- Removed Tailwind CSS, using external stylesheet instead -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="container">
+        <header class="main-header">
+            <div class="flex-shrink-0 flex items-center p-2"><img src="Climate_Rights_Logo-b1-02.png" alt="Logo" class="h-14 w-auto"></div>
+            <h1>Climate Litigation GraphRAG</h1>
+        </header>
+
+        <main>
+            <div class="panel">
+                <p>Ask a question about the climate litigation knowledge graph.</p>
+                <form id="query-form">
+                    <div class="form-group">
+                        <input type="text" id="query-input" placeholder="e.g., Which jurisdictions have the most climate cases?">
+                        <button type="submit" id="query-submit-btn">Ask</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="results-container" class="panel" style="display: none;">
+                <div id="loader" class="loader-container" style="display: none;">
+                    <div class="loader"></div>
+                    <p>Analyzing the knowledge graph...</p>
+                </div>
+                <div id="response-area">
+                    <!-- Results will be injected here -->
+                </div>
+            </div>
+        </main>
+
+        <footer class="main-footer">
+            <p>a Graph-based Retrieval Augmented Generation System</p>
+        </footer>
+    </div>
+
+    <script>
+        const queryForm = document.getElementById('query-form');
+        const queryInput = document.getElementById('query-input');
+        const resultsContainer = document.getElementById('results-container');
+        const loader = document.getElementById('loader');
+        const responseArea = document.getElementById('response-area');
+
+        queryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = queryInput.value.trim();
+            if (!query) return;
+
+            // Show loader and results container
+            resultsContainer.style.display = 'block';
+            loader.style.display = 'flex';
+            responseArea.innerHTML = ''; // Clear previous results
+
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                console.error('Error fetching results:', error);
+                responseArea.innerHTML = `
+                    <div class="error-box">
+                        <strong>Error:</strong>
+                        <span>Could not fetch results from the server. Is the Flask app running?</span>
+                    </div>`;
+            } finally {
+                loader.style.display = 'none';
+            }
+        });
+
+        function displayResults(data) {
+            let html = `
+                <div class="response-header">
+                    <h2>Response</h2>
+                    <p>
+                        Query Type: <span class="tag">${data.classification.type.toUpperCase()}</span>
+                    </p>
+                </div>`;
+
+            if (data.answer) {
+                html += `<p class="response-answer">${data.answer.replace(/\n/g, '<br>')}</p>`;
+            }
+
+            if (data.context) {
+                html += `
+                    <div class="context-box">
+                        <h3>Retrieved Context</h3>
+                        <pre>${escapeHtml(data.context)}</pre>
+                    </div>`;
+            }
+
+            if (data.data && Object.keys(data.data).length > 0) {
+                 html += `
+                    <div class="data-box">
+                        <h3>Supporting Data</h3>
+                        <pre>${escapeHtml(JSON.stringify(data.data, null, 2))}</pre>
+                    </div>`;
+            }
+            
+            responseArea.innerHTML = html;
+        }
+
+        // Helper function to prevent HTML injection from API response
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
+
