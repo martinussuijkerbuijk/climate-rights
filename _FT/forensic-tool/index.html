@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climate Disaster & Litigation Forensics Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css">
+    <link rel="stylesheet" href="/src/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app-wrapper">
+        <header class="main-header">
+            <div class="flex-shrink-0 flex items-center p-2"><img src="Climate_Rights_Logo-b1-02.png" alt="Logo" class="h-12 w-auto"></div>
+            <nav class="main-nav">
+                <a href="#" class="nav-item active">Disasters and Climate Litigation</a>
+                <a href="#" class="nav-item ">GraphRAG Investigation</a>
+            </nav>
+            <div class="date-slider-container">
+                <span id="date-range-label">2000 - 2024</span>
+                <div id="date-range-slider"></div>
+            </div>
+        </header>
+
+        <div id="content-wrapper">
+            <aside id="side-panel">
+                <div class="panel-section">
+                    <h2 class="panel-header">Filters</h2>
+                    <div class="filter-group">
+                        <label for="country-search">Country</label>
+                        <div class="search-container">
+                            <input type="text" id="country-search" placeholder="Search for a country...">
+                            <div id="autocomplete-results"></div>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <div id="country-map-container"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label for="disaster-type">Disaster Type</label>
+                        <select id="disaster-type">
+                            <option>All Types</option>
+                            <option>Drought</option>
+                            <option>Flood</option>
+                            <option>Storm</option>
+                            <option>Earthquake</option>
+                            <option>Wildfire</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="panel-header">Disaster Analysis</h2>
+                    <div class="chart-container">
+                        <canvas id="summaryChart"></canvas>
+                    </div>
+                </div>
+            </aside>
+            <main id="main-content">
+                <div id="timeline-panel">
+                    <div class="panel-header">EVENT TIMELINE: Philippines</div>
+                    <div class="timelines-wrapper">
+                        <div class="timeline-container-left">
+                            <h3 class="timeline-header">
+                                Disasters
+                                <span id="disaster-count-display" class="timeline-count">0</span>
+                            </h3>
+                            <div id="disaster-timeline" class="timeline">
+                                <!-- Disaster events will be rendered here by JS -->
+                            </div>
+                        </div>
+                        <div class="timeline-container-right">
+                             <h3 class="timeline-header">
+                                Climate Cases
+                                <span id="cases-count-display" class="timeline-count">0</span>
+                            </h3>
+                            <div id="cases-timeline" class="timeline">
+                                <!-- Case events will be rendered here by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"></script>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+
