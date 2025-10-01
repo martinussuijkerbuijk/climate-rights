@@ -163,8 +163,9 @@ async function sendPrompt(event) {
         const data = await response.json();
 
         // --- Add AI's Response to Chat ---
-        if (data && data.output !== undefined) {
-            addMessage(data.output, 'ai-message');
+        if (Array.isArray(data) && data.length > 0 && data[0].output !== undefined) {
+          // MODIFIED: Access the output from the first element
+          addMessage(data[0].output, 'ai-message');
         } else {
             addMessage('Received an unexpected response format.', 'ai-message');
         }
