@@ -117,7 +117,32 @@
     <div id="timeline-container">
       <svg id="timeline-svg"></svg>
     </div>
+    <!-- CHAT WIDGET HTML -->
+    <div class="chat-widget-container" id="chatWidget">
+      <!-- The chat popup window -->
+      <div class="chat-popup" id="chatPopup">
+          <div class="chat-header">
+              <h2>Climate Case Agent</h2>
+              <!-- This button now closes by toggling the same function -->
+              <button class="close-btn" id="chatCloseBtn">&times;</button>
+          </div>
+          <div class="chat-messages" id="chatMessages">
+              <div class="message ai-message">
+                  What would you like to know?
+              </div>
+          </div>
+          <form class="chat-input" id="chatForm">
+              <input type="text" id="promptInput" placeholder="Type your message..." autocomplete="off">
+              <button type="submit" id="sendButton">Send</button>
+          </form>
+      </div>
+        <!-- Button to toggle the chat window -->
+      <button class="chat-toggle-button" id="chatToggleBtn">
+          AI AGENT
+      </button>
+    </div>          
   </main>
+  
 
   <script type="module" src="/src/main.js"></script>
 
