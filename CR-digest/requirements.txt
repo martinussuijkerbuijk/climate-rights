@@ -1,0 +1,6 @@
+google-cloud-bigquery
+pandas
+pandas-gbq
+google-generativeai
+telethon
+python-dotenv
