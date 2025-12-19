@@ -238,7 +238,7 @@ if __name__ == "__main__":
     PINECONE_KEY = os.getenv("PINECONE_API_KEY")
     PINECONE_INDEX = "climate-rights-agent-nollm" # Or "climate-agent-google" depending on what you built!
     NEO4J_URI = "neo4j+s://0dc47c9f.databases.neo4j.io"
-    NEO4J_AUTH = ("neo4j", "ZG-TEicS5P4dROrWdaGrS7avHTymG1OLlihxq3J3hKQ")
+    NEO4J_AUTH = ("neo4j", os.getenv("NEO_API_KEY"))
     GOOGLE_KEY = os.getenv("GOOGLE_API_KEY")
     
     # Select your Embedding Model (MUST MATCH THE BUILDER SCRIPT!)
