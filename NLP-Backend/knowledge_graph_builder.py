@@ -517,7 +517,7 @@ if __name__ == "__main__":
     # Configuration - REPLACE WITH YOUR KEYS
     PINECONE_KEY = os.getenv("PINECONE_API_KEY")
     NEO4J_URI = "neo4j+s://0dc47c9f.databases.neo4j.io"
-    NEO4J_AUTH = ("neo4j", "ZG-TEicS5P4dROrWdaGrS7avHTymG1OLlihxq3J3hKQ")
+    NEO4J_AUTH = ("neo4j", os.getenv("NEO_API_KEY"))
 
     # Set this to True to use Gemini for "Smart" extraction (Slower but better)
     USE_LLM_EXTRACTION = False  

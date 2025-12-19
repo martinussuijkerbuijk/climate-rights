@@ -11,7 +11,7 @@ load_dotenv()
 
 PINECONE_KEY = os.getenv("PINECONE_API_KEY")
 NEO4J_URI = "neo4j+s://0dc47c9f.databases.neo4j.io"
-NEO4J_AUTH = ("neo4j", "ZG-TEicS5P4dROrWdaGrS7avHTymG1OLlihxq3J3hKQ")
+NEO4J_AUTH = ("neo4j", os.getenv("NEO_API_KEY"))
 
 ## Config
 USE_GOOGLE_EMBEDDINGS = True 
